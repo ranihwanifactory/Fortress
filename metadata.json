@@ -1,0 +1,6 @@
+{
+  "name": "캐논 대전",
+  "description": "각도와 파워, 바람을 계산해 지형을 파괴하며 맞붙는 턴제 카툰 대포 게임",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

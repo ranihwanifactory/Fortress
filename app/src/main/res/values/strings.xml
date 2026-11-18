@@ -1,0 +1,34 @@
+<resources>
+    <string name="app_name">캐논 대전</string>
+    <string name="game_subtitle">CANNON BLAST DUEL</string>
+    <string name="btn_start_ai">AI 대전 시작</string>
+    <string name="btn_start_local">로컬 2인 대전</string>
+    <string name="btn_tutorial">조작법 보기</string>
+    <string name="difficulty_easy">쉬움</string>
+    <string name="difficulty_normal">보통</string>
+    <string name="difficulty_hard">어려움</string>
+    <string name="label_wind">바람</string>
+    <string name="label_wind_calm">무풍</string>
+    <string name="label_turn_player">내 턴</string>
+    <string name="label_turn_p1">1P 턴</string>
+    <string name="label_turn_p2">2P 턴</string>
+    <string name="label_turn_ai">AI 조준 중…</string>
+    <string name="label_angle">각도</string>
+    <string name="label_power">파워</string>
+    <string name="label_fuel">연료</string>
+    <string name="btn_fire">발사</string>
+    <string name="weapon_standard">기본탄</string>
+    <string name="weapon_double">2연발</string>
+    <string name="weapon_power">강력탄</string>
+    <string name="btn_pause">일시정지</string>
+    <string name="btn_resume">계속하기</string>
+    <string name="btn_restart">다시 시작</string>
+    <string name="btn_main_menu">메인으로</string>
+    <string name="result_victory">승리!</string>
+    <string name="result_defeat">패배…</string>
+    <string name="result_p1_win">1P 승리!</string>
+    <string name="result_p2_win">2P 승리!</string>
+    <string name="direct_hit">직격!</string>
+    <string name="fall_damage">낙하!</string>
+    <string name="ring_out">추락!</string>
+</resources>
