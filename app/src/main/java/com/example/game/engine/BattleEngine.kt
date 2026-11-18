@@ -49,8 +49,19 @@ sealed interface EngineAudioEvent {
     data class GameOver(val playerWon: Boolean) : EngineAudioEvent
 }
 
+data class OnlineTurnSubmission(
+    val actionType: String,
+    val tankX: Float,
+    val tankY: Float,
+    val facingRight: Boolean,
+    val aimAngleDeg: Float,
+    val power: Float,
+    val weapon: WeaponType,
+    val usedItem: ItemType?
+)
+
 /**
- * 7종 무기 + 파괴 가능한 성벽/공중발판 + 인터랙티브 지형지물(TNT 화약통, 보급 상자, 도탄 범퍼, 상승 기류)을 지원하는 전투 엔진.
+ * 7종 무기 + 파괴 가능한 성벽/공중발판 + 인터랙티브 지형지물 + 온라인 실시간 턴제 PvP를 지원하는 전투 엔진.
  */
 class BattleEngine {
 
@@ -125,10 +136,17 @@ class BattleEngine {
     private var aiMoveDuration = 0f
     private var aiHasPlanned = false
 
+    private var localTankIndex = 0
+    private var pendingOnlineItemUsed: ItemType? = null
+    private var pendingOnlineWind: Int? = null
+    var onOnlineTurnSubmitted: ((OnlineTurnSubmission) -> Unit)? = null
+    var onMatchEnded: ((winnerId: Int?, localWon: Boolean, damageDealt: Int, mode: GameMode, diff: Difficulty) -> Unit)? = null
+
     init {
-        terrain.generate(MapTheme.GRASSLAND)
-        setupTanks(GameMode.AI_VS_PLAYER)
-        setupBattlefieldProps(MapTheme.GRASSLAND)
+        val initSeed = System.currentTimeMillis()
+        terrain.generate(MapTheme.GRASSLAND, initSeed)
+        setupTanks(GameMode.AI_VS_PLAYER, initSeed)
+        setupBattlefieldProps(MapTheme.GRASSLAND, initSeed)
         initWeatherParticles(MapTheme.GRASSLAND)
     }
 
@@ -139,19 +157,80 @@ class BattleEngine {
     fun previewMapTheme(theme: MapTheme) {
         if (turnPhase == TurnPhase.TITLE && mapTheme != theme) {
             mapTheme = theme
-            terrain.generate(theme, System.currentTimeMillis())
-            setupTanks(gameMode)
-            setupBattlefieldProps(theme)
+            val seed = System.currentTimeMillis()
+            terrain.generate(theme, seed)
+            setupTanks(gameMode, seed)
+            setupBattlefieldProps(theme, seed)
             initWeatherParticles(theme)
         } else {
             mapTheme = theme
         }
     }
 
-    fun startNewMatch(mode: GameMode, diff: Difficulty, theme: MapTheme = mapTheme) {
+    fun startNewMatch(
+        mode: GameMode,
+        diff: Difficulty,
+        theme: MapTheme = mapTheme,
+        playerNickname: String? = null,
+        playerHpBonus: Int = 0
+    ) {
         gameMode = mode
         difficulty = diff
         mapTheme = theme
+        localTankIndex = 0
+        pendingOnlineItemUsed = null
+        pendingOnlineWind = null
+        resetMatchBuffers()
+
+        val seed = System.currentTimeMillis()
+        terrain.generate(theme, seed)
+        setupTanks(
+            mode = mode,
+            seed = seed,
+            p1CustomName = playerNickname,
+            p1HpBonus = if (mode == GameMode.AI_VS_PLAYER) playerHpBonus else 0
+        )
+        setupBattlefieldProps(theme, seed)
+        initWeatherParticles(theme)
+
+        cameraX = tanks[0].x
+        cameraY = tanks[0].y - 80f
+        beginTurn(0, isFirstTurn = true)
+    }
+
+    fun startOnlineMatch(
+        seed: Long,
+        theme: MapTheme,
+        hostName: String,
+        guestName: String,
+        localIsHost: Boolean,
+        initialWindForce: Int
+    ) {
+        gameMode = GameMode.ONLINE_PVP
+        difficulty = Difficulty.NORMAL
+        mapTheme = theme
+        localTankIndex = if (localIsHost) 0 else 1
+        pendingOnlineItemUsed = null
+        pendingOnlineWind = initialWindForce.coerceIn(-10, 10)
+        resetMatchBuffers()
+
+        terrain.generate(theme, seed)
+        setupTanks(
+            mode = GameMode.ONLINE_PVP,
+            seed = seed,
+            p1CustomName = hostName,
+            p2CustomName = guestName,
+            p1HpBonus = 0
+        )
+        setupBattlefieldProps(theme, seed)
+        initWeatherParticles(theme)
+
+        cameraX = tanks[0].x
+        cameraY = tanks[0].y - 80f
+        beginTurn(0, isFirstTurn = true)
+    }
+
+    private fun resetMatchBuffers() {
         isPaused = false
         showTutorial = false
         showSettings = false
@@ -173,33 +252,39 @@ class BattleEngine {
         manualPanTimer = 0f
         shakeTimer = 0f
         fireworkTimer = 0f
-
-        terrain.generate(theme, System.currentTimeMillis())
-        setupTanks(mode)
-        setupBattlefieldProps(theme)
-        initWeatherParticles(theme)
-
-        cameraX = tanks[0].x
-        cameraY = tanks[0].y - 80f
-        beginTurn(0, isFirstTurn = true)
     }
 
-    private fun setupTanks(mode: GameMode) {
+    private fun setupTanks(
+        mode: GameMode,
+        seed: Long,
+        p1CustomName: String? = null,
+        p2CustomName: String? = null,
+        p1HpBonus: Int = 0
+    ) {
         tanks.clear()
-        val p1X = 270f + Random.nextFloat() * 130f
-        val p2X = terrain.worldWidth - (270f + Random.nextFloat() * 130f)
+        val rng = Random(seed xor 0x51A7L)
+        val p1X = 270f + rng.nextFloat() * 130f
+        val p2X = terrain.worldWidth - (270f + rng.nextFloat() * 130f)
         val p1Y = terrain.findTopSurfaceY(p1X)
         val p2Y = terrain.findTopSurfaceY(p2X)
+        val p1MaxHp = (100 + p1HpBonus).coerceIn(100, 145)
+
+        val defaultP1 = if (mode == GameMode.AI_VS_PLAYER) {
+            if (language == AppLanguage.KO) "블루 캡틴" else "Blue Captain"
+        } else "1P Blue"
+        val defaultP2 = if (mode == GameMode.AI_VS_PLAYER) {
+            if (language == AppLanguage.KO) "레드 불독 (AI)" else "Red Bulldog"
+        } else "2P Red"
 
         tanks.add(
             TankState(
                 id = 0,
-                name = if (mode == GameMode.AI_VS_PLAYER) {
-                    if (language == AppLanguage.KO) "블루 캡틴" else "Blue Captain"
-                } else "1P Blue",
+                name = p1CustomName?.takeIf { it.isNotBlank() } ?: defaultP1,
                 isAi = false,
                 x = p1X,
                 y = p1Y,
+                hp = p1MaxHp,
+                maxHp = p1MaxHp,
                 slopeAngleDeg = terrain.computeSlopeAngleDeg(p1X, p1Y),
                 aimAngleDeg = 45f,
                 facingRight = true,
@@ -210,9 +295,7 @@ class BattleEngine {
         tanks.add(
             TankState(
                 id = 1,
-                name = if (mode == GameMode.AI_VS_PLAYER) {
-                    if (language == AppLanguage.KO) "레드 불독 (AI)" else "Red Bulldog"
-                } else "2P Red",
+                name = p2CustomName?.takeIf { it.isNotBlank() } ?: defaultP2,
                 isAi = (mode == GameMode.AI_VS_PLAYER),
                 x = p2X,
                 y = p2Y,
@@ -225,12 +308,13 @@ class BattleEngine {
         )
     }
 
-    private fun setupBattlefieldProps(theme: MapTheme) {
+    private fun setupBattlefieldProps(theme: MapTheme, seed: Long) {
         props.clear()
         sceneryProps.clear()
+        val rng = Random(seed xor 0x7A21L)
 
         // 1) TNT 폭발 화약통 2개 (양측 언덕 중간 배치)
-        listOf(640f + Random.nextFloat() * 50f, 1520f + Random.nextFloat() * 50f).forEach { px ->
+        listOf(640f + rng.nextFloat() * 50f, 1520f + rng.nextFloat() * 50f).forEach { px ->
             val py = terrain.findTopSurfaceY(px)
             props.add(
                 BattlePropState(
@@ -278,7 +362,7 @@ class BattleEngine {
         }
 
         // 4) 상승 기류 간헐천 1개 (중앙 근처 지면에서 위로 솟구치는 바람 기둥)
-        val ventX = if (Random.nextBoolean()) 955f else 1245f
+        val ventX = if (rng.nextBoolean()) 955f else 1245f
         val ventY = terrain.findTopSurfaceY(ventX)
         props.add(
             BattlePropState(
@@ -352,7 +436,12 @@ class BattleEngine {
     private fun beginTurn(tankIdx: Int, isFirstTurn: Boolean = false) {
         activeTankIndex = tankIdx
         turnTimeRemaining = TURN_DURATION_SEC
-        windForce = Random.nextInt(-10, 11)
+        windForce = if (gameMode == GameMode.ONLINE_PVP) {
+            pendingOnlineWind ?: windForce
+        } else {
+            Random.nextInt(-10, 11)
+        }
+        pendingOnlineItemUsed = null
         chargingPower = 0f
         isChargingInput = false
         moveDirInput = 0
@@ -436,17 +525,98 @@ class BattleEngine {
         } else {
             turnPhase = TurnPhase.PLAYER_AIMING
             statusBanner = when {
-                gameMode == GameMode.LOCAL_2P -> if (language == AppLanguage.KO) "${t.name} 턴!" else "${t.name}'s Turn!"
+                gameMode == GameMode.ONLINE_PVP && tankIdx != localTankIndex ->
+                    if (language == AppLanguage.KO) "${t.name} 조준 중…" else "${t.name} aiming…"
+                gameMode == GameMode.ONLINE_PVP ->
+                    if (language == AppLanguage.KO) "내 턴! 온라인 대전 발사!" else "Your Turn! Fire!"
+                gameMode == GameMode.LOCAL_2P ->
+                    if (language == AppLanguage.KO) "${t.name} 턴!" else "${t.name}'s Turn!"
                 language == AppLanguage.KO -> "내 턴! 지형지물과 무기를 활용하세요"
                 else -> "Your Turn! Use Terrain Props & Fire"
             }
         }
     }
 
+    private fun canLocalControlActiveTank(): Boolean {
+        val t = tanks.getOrNull(activeTankIndex) ?: return false
+        if (t.isAi) return false
+        return gameMode != GameMode.ONLINE_PVP || activeTankIndex == localTankIndex
+    }
+
+    fun applyRemoteTurnAction(
+        actionType: String,
+        tankX: Float,
+        tankY: Float,
+        facingRight: Boolean,
+        aimAngleDeg: Float,
+        power: Float,
+        weapon: WeaponType,
+        usedItem: ItemType?,
+        nextWindForce: Int
+    ) {
+        if (gameMode != GameMode.ONLINE_PVP || turnPhase == TurnPhase.GAME_OVER) return
+        val idx = activeTankIndex
+        if (idx == localTankIndex) return
+        pendingOnlineWind = nextWindForce.coerceIn(-10, 10)
+
+        var remoteTank = tanks[idx]
+        val safeX = tankX.coerceIn(36f, terrain.worldWidth - 36f)
+        val safeY = tankY.coerceIn(40f, terrain.worldHeight - 10f)
+        remoteTank = remoteTank.copy(
+            x = safeX,
+            y = safeY,
+            facingRight = facingRight,
+            aimAngleDeg = aimAngleDeg.coerceIn(0f, 90f),
+            slopeAngleDeg = terrain.computeSlopeAngleDeg(safeX, safeY)
+        )
+        tanks[idx] = remoteTank
+
+        if (usedItem != null && usedItem !in remoteTank.usedItems) {
+            applyItemEffect(idx, usedItem)
+        }
+
+        when (actionType) {
+            "FIRE" -> {
+                selectedWeapon = weapon
+                fireActiveTank(power.coerceIn(0.08f, 1.0f), weapon, fromRemote = true)
+            }
+            "TIMEOUT" -> {
+                spawnPopup(
+                    remoteTank.x,
+                    remoteTank.y - 68f,
+                    if (language == AppLanguage.KO) "시간 초과!" else "Time Out!",
+                    WarningAmber
+                )
+                postImpactTimer = 0.65f
+                turnPhase = TurnPhase.POST_IMPACT
+            }
+        }
+    }
+
+    fun forceOnlineGameOver(winnerTankIndex: Int, reason: String? = null) {
+        if (turnPhase == TurnPhase.GAME_OVER) return
+        winnerId = winnerTankIndex
+        turnPhase = TurnPhase.GAME_OVER
+        statusBanner = reason
+        val localWon = winnerTankIndex == localTankIndex
+        pendingAudioEvents.add(EngineAudioEvent.GameOver(localWon))
+        val localDmg = tanks.getOrNull(localTankIndex)?.totalDamageDealt ?: 0
+        onMatchEnded?.invoke(winnerTankIndex, localWon, localDmg, gameMode, difficulty)
+    }
+
+    fun syncOnlineWind(nextWindForce: Int) {
+        if (gameMode != GameMode.ONLINE_PVP) return
+        val clamped = nextWindForce.coerceIn(-10, 10)
+        pendingOnlineWind = clamped
+        if (turnPhase == TurnPhase.PLAYER_AIMING && activeTankIndex != localTankIndex) {
+            windForce = clamped
+        }
+    }
+
     // --- 입력 제어 ---
 
     fun setMoveInput(dir: Int) {
-        if (turnPhase == TurnPhase.PLAYER_AIMING && !isPaused) {
+        if (turnPhase == TurnPhase.PLAYER_AIMING && !isPaused && canLocalControlActiveTank()) {
             moveDirInput = dir
             if (dir != 0) manualPanTimer = 0f
         } else {
@@ -455,7 +625,7 @@ class BattleEngine {
     }
 
     fun setAngleInput(dir: Int) {
-        if (turnPhase == TurnPhase.PLAYER_AIMING && !isPaused) {
+        if (turnPhase == TurnPhase.PLAYER_AIMING && !isPaused && canLocalControlActiveTank()) {
             angleDirInput = dir
             if (dir != 0) manualPanTimer = 0f
         } else {
@@ -464,14 +634,14 @@ class BattleEngine {
     }
 
     fun toggleFacing() {
-        if (turnPhase != TurnPhase.PLAYER_AIMING || isPaused) return
+        if (turnPhase != TurnPhase.PLAYER_AIMING || isPaused || !canLocalControlActiveTank()) return
         val t = tanks[activeTankIndex]
         tanks[activeTankIndex] = t.copy(facingRight = !t.facingRight)
         manualPanTimer = 0f
     }
 
     fun selectWeapon(weapon: WeaponType) {
-        if (turnPhase != TurnPhase.PLAYER_AIMING || isPaused) return
+        if (turnPhase != TurnPhase.PLAYER_AIMING || isPaused || !canLocalControlActiveTank()) return
         val t = tanks[activeTankIndex]
         if ((t.weaponCooldowns[weapon] ?: 0) == 0) {
             selectedWeapon = weapon
@@ -479,11 +649,18 @@ class BattleEngine {
     }
 
     fun useItem(item: ItemType) {
-        if (turnPhase != TurnPhase.PLAYER_AIMING || isPaused) return
+        if (turnPhase != TurnPhase.PLAYER_AIMING || isPaused || !canLocalControlActiveTank()) return
         val idx = activeTankIndex
         val t = tanks[idx]
-        if (t.isAi || item in t.usedItems) return
+        if (item in t.usedItems) return
+        applyItemEffect(idx, item)
+        if (gameMode == GameMode.ONLINE_PVP) {
+            pendingOnlineItemUsed = item
+        }
+    }
 
+    private fun applyItemEffect(idx: Int, item: ItemType) {
+        val t = tanks[idx]
         val updatedUsed = t.usedItems + item
         when (item) {
             ItemType.HEAL -> {
@@ -504,9 +681,8 @@ class BattleEngine {
     }
 
     fun startCharging() {
-        if (turnPhase != TurnPhase.PLAYER_AIMING || isPaused) return
+        if (turnPhase != TurnPhase.PLAYER_AIMING || isPaused || !canLocalControlActiveTank()) return
         val t = tanks[activeTankIndex]
-        if (t.isAi) return
         moveDirInput = 0
         angleDirInput = 0
         manualPanTimer = 0f
@@ -518,12 +694,12 @@ class BattleEngine {
     }
 
     fun releaseAndFire() {
-        if (turnPhase != TurnPhase.CHARGING) return
+        if (turnPhase != TurnPhase.CHARGING || !canLocalControlActiveTank()) return
         isChargingInput = false
         val power = chargingPower.coerceIn(0.08f, 1.0f)
         val t = tanks[activeTankIndex]
         tanks[activeTankIndex] = t.copy(expression = TankExpression.NORMAL)
-        fireActiveTank(power, selectedWeapon)
+        fireActiveTank(power, selectedWeapon, fromRemote = false)
     }
 
     fun panCameraBy(worldDx: Float) {
@@ -801,11 +977,32 @@ class BattleEngine {
 
         tanks[idx] = t
 
+        if (gameMode == GameMode.ONLINE_PVP && idx != localTankIndex) {
+            // 상대방 턴: 표시용 타이머만 1초에서 대기하고 원격 액션을 기다림
+            turnTimeRemaining = max(1f, turnTimeRemaining - dt)
+            return
+        }
+
         turnTimeRemaining -= dt
         if (turnTimeRemaining <= 0f) {
             turnTimeRemaining = 0f
             tanks[idx] = tanks[idx].copy(fuel = 0f)
             spawnPopup(t.x, t.y - 68f, if (language == AppLanguage.KO) "시간 초과!" else "Time Out!", WarningAmber)
+            if (gameMode == GameMode.ONLINE_PVP && idx == localTankIndex) {
+                onOnlineTurnSubmitted?.invoke(
+                    OnlineTurnSubmission(
+                        actionType = "TIMEOUT",
+                        tankX = t.x,
+                        tankY = t.y,
+                        facingRight = t.facingRight,
+                        aimAngleDeg = t.aimAngleDeg,
+                        power = 0f,
+                        weapon = selectedWeapon,
+                        usedItem = pendingOnlineItemUsed
+                    )
+                )
+                pendingOnlineItemUsed = null
+            }
             postImpactTimer = 0.65f
             turnPhase = TurnPhase.POST_IMPACT
         }
@@ -1015,11 +1212,27 @@ class BattleEngine {
         return minDist
     }
 
-    private fun fireActiveTank(power: Float, weapon: WeaponType) {
+    private fun fireActiveTank(power: Float, weapon: WeaponType, fromRemote: Boolean = false) {
         val idx = activeTankIndex
         val t = tanks[idx]
         val (muzzle, worldAngleRad) = computeMuzzleAndAngle(t)
         val speed = MAX_LAUNCH_SPEED * power * weapon.speedMultiplier
+
+        if (gameMode == GameMode.ONLINE_PVP && !fromRemote && idx == localTankIndex) {
+            onOnlineTurnSubmitted?.invoke(
+                OnlineTurnSubmission(
+                    actionType = "FIRE",
+                    tankX = t.x,
+                    tankY = t.y,
+                    facingRight = t.facingRight,
+                    aimAngleDeg = t.aimAngleDeg,
+                    power = power,
+                    weapon = weapon,
+                    usedItem = pendingOnlineItemUsed
+                )
+            )
+            pendingOnlineItemUsed = null
+        }
 
         val updatedCooldowns = t.weaponCooldowns.toMutableMap()
         if (weapon.cooldownTurns > 0) {
@@ -1557,16 +1770,31 @@ class BattleEngine {
             }
             turnPhase = TurnPhase.GAME_OVER
             statusBanner = null
-            val playerWon = (gameMode == GameMode.LOCAL_2P) || (winner?.id == 0)
+            val playerWon = when (gameMode) {
+                GameMode.LOCAL_2P -> true
+                GameMode.ONLINE_PVP -> winner?.id == localTankIndex
+                GameMode.AI_VS_PLAYER -> winner?.id == 0
+            }
             pendingAudioEvents.add(EngineAudioEvent.GameOver(playerWon))
+            val localDmg = tanks.getOrNull(localTankIndex)?.totalDamageDealt ?: 0
+            onMatchEnded?.invoke(winner?.id, playerWon, localDmg, gameMode, difficulty)
         }
     }
 
     private fun advanceTurnOrEnd() {
         val aliveTanks = tanks.filter { it.isAlive }
         if (aliveTanks.size <= 1) {
-            winnerId = aliveTanks.firstOrNull()?.id
-            turnPhase = TurnPhase.GAME_OVER
+            if (turnPhase != TurnPhase.GAME_OVER) {
+                winnerId = aliveTanks.firstOrNull()?.id
+                turnPhase = TurnPhase.GAME_OVER
+                val playerWon = when (gameMode) {
+                    GameMode.LOCAL_2P -> true
+                    GameMode.ONLINE_PVP -> winnerId == localTankIndex
+                    GameMode.AI_VS_PLAYER -> winnerId == 0
+                }
+                val localDmg = tanks.getOrNull(localTankIndex)?.totalDamageDealt ?: 0
+                onMatchEnded?.invoke(winnerId, playerWon, localDmg, gameMode, difficulty)
+            }
             return
         }
         val nextIndex = (activeTankIndex + 1) % tanks.size
@@ -1791,6 +2019,8 @@ class BattleEngine {
             chargingPower = chargingPower,
             selectedWeapon = selectedWeapon,
             tanks = tanks.toList(),
+            localTankIndex = localTankIndex,
+            isLocalPlayerTurn = canLocalControlActiveTank(),
             winnerId = winnerId,
             statusBanner = statusBanner
         )

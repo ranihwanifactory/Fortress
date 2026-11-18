@@ -1,0 +1,155 @@
+{
+  "entities": {
+    "PlayerProfile": {
+      "title": "PlayerProfile",
+      "description": "Public non-PII player profile storing nickname, level/XP progression, win/loss stats, and rank points for the leaderboard.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string", "description": "Firebase Auth UID of the player." },
+        "nickname": { "type": "string", "description": "Display nickname shown in lobby, battle, and rankings (1-24 chars)." },
+        "listedInRanking": { "type": "boolean", "description": "Public visibility flag for leaderboard listing." },
+        "level": { "type": "integer", "description": "Current commander level (1-999)." },
+        "xp": { "type": "integer", "description": "Current level XP progress." },
+        "totalXp": { "type": "integer", "description": "Lifetime accumulated XP." },
+        "wins": { "type": "integer", "description": "Total wins (AI + Online)." },
+        "losses": { "type": "integer", "description": "Total losses (AI + Online)." },
+        "onlineWins": { "type": "integer", "description": "Online PvP wins." },
+        "onlineLosses": { "type": "integer", "description": "Online PvP losses." },
+        "rankPoints": { "type": "integer", "description": "Leaderboard rating points." },
+        "winStreak": { "type": "integer", "description": "Current consecutive win streak." },
+        "bestWinStreak": { "type": "integer", "description": "Best consecutive win streak." },
+        "totalDamage": { "type": "integer", "description": "Cumulative damage dealt across matches." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp (FieldValue.serverTimestamp()) when profile was created." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp (FieldValue.serverTimestamp()) when profile was last updated." }
+      },
+      "required": [
+        "userId",
+        "nickname",
+        "listedInRanking",
+        "level",
+        "xp",
+        "totalXp",
+        "wins",
+        "losses",
+        "onlineWins",
+        "onlineLosses",
+        "rankPoints",
+        "winStreak",
+        "bestWinStreak",
+        "totalDamage",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "MatchRoom": {
+      "title": "MatchRoom",
+      "description": "Online 1v1 multiplayer lobby room and turn-by-turn battle synchronization document.",
+      "type": "object",
+      "properties": {
+        "roomCode": { "type": "string", "description": "6-character alphanumeric invite code." },
+        "roomTitle": { "type": "string", "description": "Lobby room title (1-36 chars)." },
+        "hostUid": { "type": "string", "description": "UID of the room host (Player 1 / Blue)." },
+        "hostName": { "type": "string", "description": "Host nickname." },
+        "hostLevel": { "type": "integer", "description": "Host level." },
+        "guestUid": { "type": "string", "description": "UID of joined guest (Player 2 / Red), or empty string if waiting." },
+        "guestName": { "type": "string", "description": "Guest nickname, or empty string." },
+        "guestLevel": { "type": "integer", "description": "Guest level, or 0 if waiting." },
+        "guestReady": { "type": "boolean", "description": "Whether the guest is ready to start." },
+        "participantUids": { "type": "array", "description": "Bounded array (1-2 UIDs) of current participants." },
+        "mapTheme": { "type": "string", "enum": ["GRASSLAND", "DESERT", "SNOW", "VOLCANO", "ISLAND", "SPACE"], "description": "Selected battlefield map theme." },
+        "terrainSeed": { "type": "integer", "description": "Deterministic terrain generation seed." },
+        "status": { "type": "string", "enum": ["WAITING", "PLAYING", "FINISHED"], "description": "Current room lifecycle state." },
+        "activeTurnUid": { "type": "string", "description": "UID of the player whose turn is currently active." },
+        "turnSeq": { "type": "integer", "description": "Monotonically increasing turn action sequence number." },
+        "windForce": { "type": "integer", "description": "Current wind force (-10 to 10)." },
+        "lastActionType": { "type": "string", "enum": ["NONE", "FIRE", "TIMEOUT", "FORFEIT"], "description": "Type of the most recent turn action." },
+        "lastActionUid": { "type": "string", "description": "UID of the player who submitted the last action." },
+        "lastTankX": { "type": "number", "description": "World X coordinate of the acting tank." },
+        "lastTankY": { "type": "number", "description": "World Y coordinate of the acting tank." },
+        "lastFacingRight": { "type": "boolean", "description": "Facing direction of the acting tank." },
+        "lastAimAngle": { "type": "number", "description": "Aim angle in degrees (0-90)." },
+        "lastPower": { "type": "number", "description": "Shot power ratio (0.0-1.0)." },
+        "lastWeapon": { "type": "string", "enum": ["STANDARD", "DOUBLE", "POWER", "WATER", "POOP", "GAS", "TRASH"], "description": "Weapon fired on the last turn." },
+        "lastUsedItem": { "type": "string", "enum": ["", "HEAL", "FUEL_BOOST", "SHIELD"], "description": "Item activated before firing, if any." },
+        "winnerUid": { "type": "string", "description": "UID of the match winner once FINISHED." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp (FieldValue.serverTimestamp()) when room was created." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp (FieldValue.serverTimestamp()) when room was updated." }
+      },
+      "required": [
+        "roomCode",
+        "roomTitle",
+        "hostUid",
+        "hostName",
+        "hostLevel",
+        "guestUid",
+        "guestName",
+        "guestLevel",
+        "guestReady",
+        "participantUids",
+        "mapTheme",
+        "terrainSeed",
+        "status",
+        "activeTurnUid",
+        "turnSeq",
+        "windForce",
+        "lastActionType",
+        "lastActionUid",
+        "lastTankX",
+        "lastTankY",
+        "lastFacingRight",
+        "lastAimAngle",
+        "lastPower",
+        "lastWeapon",
+        "lastUsedItem",
+        "winnerUid",
+        "createdAt",
+        "updatedAt"
+      ]
+    },
+    "RoomInvite": {
+      "title": "RoomInvite",
+      "description": "Direct invitation sent from a room host to another signed-in player.",
+      "type": "object",
+      "properties": {
+        "roomId": { "type": "string", "description": "Target match room document ID." },
+        "roomCode": { "type": "string", "description": "Target room 6-character invite code." },
+        "roomTitle": { "type": "string", "description": "Target room title." },
+        "mapTheme": { "type": "string", "enum": ["GRASSLAND", "DESERT", "SNOW", "VOLCANO", "ISLAND", "SPACE"], "description": "Map theme of the room." },
+        "fromUid": { "type": "string", "description": "Sender (host) UID." },
+        "fromName": { "type": "string", "description": "Sender nickname." },
+        "toUid": { "type": "string", "description": "Recipient UID." },
+        "toName": { "type": "string", "description": "Recipient nickname." },
+        "status": { "type": "string", "enum": ["PENDING", "ACCEPTED", "DECLINED"], "description": "Invitation status." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp (FieldValue.serverTimestamp()) when invite was created." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp (FieldValue.serverTimestamp()) when invite was updated." }
+      },
+      "required": [
+        "roomId",
+        "roomCode",
+        "roomTitle",
+        "mapTheme",
+        "fromUid",
+        "fromName",
+        "toUid",
+        "toName",
+        "status",
+        "createdAt",
+        "updatedAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/player_profiles/{userId}": {
+      "schema": { "$ref": "#/entities/PlayerProfile" },
+      "description": "Public gaming profiles for win/loss tracking, level/XP progression, and global rankings."
+    },
+    "/match_rooms/{roomId}": {
+      "schema": { "$ref": "#/entities/MatchRoom" },
+      "description": "Real-time multiplayer lobby rooms and turn-based PvP battle synchronization."
+    },
+    "/room_invites/{inviteId}": {
+      "schema": { "$ref": "#/entities/RoomInvite" },
+      "description": "Direct game room invitations sent between signed-in players."
+    }
+  }
+}

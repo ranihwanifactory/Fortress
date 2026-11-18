@@ -23,7 +23,8 @@ enum class Difficulty(val labelKo: String, val labelEn: String) {
 
 enum class GameMode {
     AI_VS_PLAYER,
-    LOCAL_2P
+    LOCAL_2P,
+    ONLINE_PVP
 }
 
 enum class MapTheme(
@@ -495,6 +496,8 @@ data class BattleHudState(
             accentColor = EnemyCoralLight
         )
     ),
+    val localTankIndex: Int = 0,
+    val isLocalPlayerTurn: Boolean = true,
     val winnerId: Int? = null,
     val statusBanner: String? = null
 )

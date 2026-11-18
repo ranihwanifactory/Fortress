@@ -33,11 +33,14 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.Logout
+import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.EmojiEvents
 import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.HelpOutline
 import androidx.compose.material.icons.rounded.PlayArrow
+import androidx.compose.material.icons.rounded.Public
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material.icons.rounded.SmartToy
@@ -45,6 +48,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
@@ -68,9 +72,12 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.R
+import com.example.firebase.MatchProgressionResult
+import com.example.firebase.PlayerProfile
 import com.example.game.model.AppLanguage
 import com.example.game.model.AudioSettingsState
 import com.example.game.model.BattleHudState
@@ -100,10 +107,15 @@ fun TitleOverlay(
     selectedDifficulty: Difficulty,
     selectedMap: MapTheme,
     language: AppLanguage,
+    profile: PlayerProfile?,
+    pendingInviteCount: Int,
     onSelectDifficulty: (Difficulty) -> Unit,
     onSelectMap: (MapTheme) -> Unit,
     onStartAiMatch: () -> Unit,
     onStartLocalMatch: () -> Unit,
+    onOpenOnlineLobby: () -> Unit,
+    onOpenRankings: () -> Unit,
+    onSignOut: () -> Unit,
     onOpenTutorial: () -> Unit,
     onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier
@@ -223,12 +235,101 @@ fun TitleOverlay(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(20.dp)
         ) {
-            // 좌측: 입체 카툰 로고 + 대표 탱크 엠블럼
+            // 좌측: 사령관 프로필 배지 + 입체 카툰 로고 + 대표 탱크 엠블럼
             Column(
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(0.95f),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
+                // 사령관 프로필 & 레벨/랭크 카드
+                if (profile != null) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(Color(0xDD0D1B2A))
+                            .border(2.dp, profile.tier.badgeColor, RoundedCornerShape(16.dp))
+                            .clickable { onOpenRankings() }
+                            .padding(horizontal = 10.dp, vertical = 6.dp)
+                            .testTag("commander_profile_pill"),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(PrimaryGold)
+                                .border(1.5.dp, DeepNavyOutline, RoundedCornerShape(10.dp))
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        ) {
+                            Text(
+                                text = "LV.${profile.level}",
+                                fontFamily = FredokaFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 13.sp,
+                                color = DeepNavyOutline
+                            )
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(
+                                    text = profile.nickname,
+                                    style = MaterialTheme.typography.titleSmall,
+                                    color = Color.White,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = "${profile.tier.label(language)} · ${profile.rankPoints}RP",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = profile.tier.badgeColor,
+                                    maxLines = 1
+                                )
+                            }
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                val xpRatio = (profile.xp.toFloat() / profile.xpNeededForNextLevel.coerceAtLeast(1L).toFloat())
+                                    .coerceIn(0f, 1f)
+                                LinearProgressIndicator(
+                                    progress = { xpRatio },
+                                    color = SuccessGreen,
+                                    trackColor = Color(0xFF1F3452),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(6.dp)
+                                        .clip(RoundedCornerShape(50))
+                                )
+                                Text(
+                                    text = if (isKo) "${profile.wins}승 ${profile.losses}패" else "${profile.wins}W ${profile.losses}L",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = TextMuted
+                                )
+                            }
+                        }
+                        IconButton(
+                            onClick = onSignOut,
+                            modifier = Modifier
+                                .size(38.dp)
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(Color(0xFF23395B))
+                                .testTag("sign_out_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Rounded.Logout,
+                                contentDescription = if (isKo) "로그아웃" else "Sign out",
+                                tint = Color.White,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+
                 // 입체 3D 카툰 로고 ("캐논 대전" + 리벳 그린 V2 배지)
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
@@ -240,7 +341,7 @@ fun TitleOverlay(
                             text = if (isKo) "캐논 대전" else "CANNON",
                             style = TextStyle(
                                 fontFamily = JuaFontFamily,
-                                fontSize = 46.sp,
+                                fontSize = 42.sp,
                                 color = Color(0xFF4A1500)
                             ),
                             modifier = Modifier.offset(x = 3.dp, y = 4.dp)
@@ -250,7 +351,7 @@ fun TitleOverlay(
                             text = if (isKo) "캐논 대전" else "CANNON",
                             style = TextStyle(
                                 fontFamily = JuaFontFamily,
-                                fontSize = 46.sp,
+                                fontSize = 42.sp,
                                 color = Color.White
                             ),
                             modifier = Modifier.offset(x = (-1.5).dp, y = (-1.5).dp)
@@ -260,7 +361,7 @@ fun TitleOverlay(
                             text = if (isKo) "캐논 대전" else "CANNON",
                             style = TextStyle(
                                 fontFamily = JuaFontFamily,
-                                fontSize = 46.sp,
+                                fontSize = 42.sp,
                                 brush = Brush.verticalGradient(
                                     colors = listOf(Color(0xFFFFE600), Color(0xFFFF7B00), Color(0xFFE63946))
                                 )
@@ -285,35 +386,35 @@ fun TitleOverlay(
                             text = "V2",
                             fontFamily = FredokaFontFamily,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 24.sp,
+                            fontSize = 22.sp,
                             color = DeepNavyOutline
                         )
                     }
                 }
 
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
                 Image(
                     painter = painterResource(id = R.drawable.cannon_app_icon),
                     contentDescription = "캐논 대전 탱크",
                     modifier = Modifier
-                        .size(106.dp)
-                        .clip(RoundedCornerShape(26.dp))
-                        .border(3.5.dp, Color.White, RoundedCornerShape(26.dp))
-                        .border(1.5.dp, DeepNavyOutline, RoundedCornerShape(26.dp))
+                        .size(88.dp)
+                        .clip(RoundedCornerShape(22.dp))
+                        .border(3.dp, Color.White, RoundedCornerShape(22.dp))
+                        .border(1.5.dp, DeepNavyOutline, RoundedCornerShape(22.dp))
                 )
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(6.dp))
 
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(50))
                         .background(Color(0xBB0D1B2A))
-                        .padding(horizontal = 14.dp, vertical = 5.dp)
+                        .padding(horizontal = 12.dp, vertical = 4.dp)
                 ) {
                     Text(
                         text = if (isKo) "바람을 읽고! 지형을 부수고! 명중시켜라!" else "Read the Wind! Break the Ground! Fire!",
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = MaterialTheme.typography.bodySmall,
                         color = Color.White,
                         textAlign = TextAlign.Center
                     )
@@ -435,33 +536,100 @@ fun TitleOverlay(
                     }
                 }
 
-                // 메인 AI 대전 버튼
-                Button(
-                    onClick = onStartAiMatch,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = PrimaryGoldDark,
-                        contentColor = Color.White
-                    ),
-                    shape = RoundedCornerShape(16.dp),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(52.dp)
-                        .border(2.5.dp, DeepNavyOutline, RoundedCornerShape(16.dp))
-                        .testTag("start_ai_button")
-                ) {
-                    Icon(Icons.Rounded.SmartToy, contentDescription = null)
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = if (isKo) "AI 대전 시작" else "Play vs AI",
-                        style = MaterialTheme.typography.titleLarge
-                    )
-                }
-
-                // 로컬 2인 대전 & 조작법
+                // 온라인 멀티 대기실 & 랭킹 버튼 (핵심 멀티플레이 진입점)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
+                    Button(
+                        onClick = onOpenOnlineLobby,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = SuccessGreen,
+                            contentColor = DeepNavyOutline
+                        ),
+                        shape = RoundedCornerShape(15.dp),
+                        modifier = Modifier
+                            .weight(1.3f)
+                            .height(50.dp)
+                            .border(2.5.dp, DeepNavyOutline, RoundedCornerShape(15.dp))
+                            .testTag("open_online_lobby_button")
+                    ) {
+                        Icon(Icons.Rounded.Public, contentDescription = null)
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = if (isKo) "온라인 멀티 대전" else "Online PvP",
+                            style = MaterialTheme.typography.titleMedium,
+                            maxLines = 1
+                        )
+                        if (pendingInviteCount > 0) {
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Box(
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .background(DangerRed)
+                                    .padding(horizontal = 6.dp, vertical = 1.dp)
+                            ) {
+                                Text(
+                                    text = "$pendingInviteCount",
+                                    fontFamily = FredokaFontFamily,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.sp,
+                                    color = Color.White
+                                )
+                            }
+                        }
+                    }
+
+                    Button(
+                        onClick = onOpenRankings,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFF7B2CBF),
+                            contentColor = Color.White
+                        ),
+                        shape = RoundedCornerShape(15.dp),
+                        modifier = Modifier
+                            .weight(0.9f)
+                            .height(50.dp)
+                            .border(2.dp, DeepNavyOutline, RoundedCornerShape(15.dp))
+                            .testTag("open_rankings_button")
+                    ) {
+                        Icon(Icons.Rounded.EmojiEvents, contentDescription = null, tint = PrimaryGold)
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = if (isKo) "랭킹·레벨" else "Rankings",
+                            style = MaterialTheme.typography.titleSmall,
+                            maxLines = 1
+                        )
+                    }
+                }
+
+                // AI 대전 & 로컬 2인 대전 & 조작법
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Button(
+                        onClick = onStartAiMatch,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = PrimaryGoldDark,
+                            contentColor = Color.White
+                        ),
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier
+                            .weight(1.1f)
+                            .height(48.dp)
+                            .border(2.dp, DeepNavyOutline, RoundedCornerShape(14.dp))
+                            .testTag("start_ai_button")
+                    ) {
+                        Icon(Icons.Rounded.SmartToy, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
+                        Text(
+                            text = if (isKo) "AI 대전" else "vs AI",
+                            style = MaterialTheme.typography.titleSmall,
+                            maxLines = 1
+                        )
+                    }
+
                     Button(
                         onClick = onStartLocalMatch,
                         colors = ButtonDefaults.buttonColors(
@@ -474,11 +642,12 @@ fun TitleOverlay(
                             .height(48.dp)
                             .testTag("start_local_button")
                     ) {
-                        Icon(Icons.Rounded.Groups, contentDescription = null)
-                        Spacer(modifier = Modifier.width(6.dp))
+                        Icon(Icons.Rounded.Groups, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = if (isKo) "로컬 2인 대전" else "Local 2P",
-                            style = MaterialTheme.typography.bodyLarge
+                            text = if (isKo) "2인 대전" else "Local 2P",
+                            style = MaterialTheme.typography.titleSmall,
+                            maxLines = 1
                         )
                     }
 
@@ -489,11 +658,11 @@ fun TitleOverlay(
                             .height(48.dp)
                             .testTag("tutorial_button")
                     ) {
-                        Icon(Icons.Rounded.HelpOutline, contentDescription = null, tint = PrimaryGold)
-                        Spacer(modifier = Modifier.width(4.dp))
+                        Icon(Icons.Rounded.HelpOutline, contentDescription = null, tint = PrimaryGold, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(3.dp))
                         Text(
-                            text = if (isKo) "조작법" else "Guide",
-                            style = MaterialTheme.typography.bodyLarge,
+                            text = if (isKo) "가이드" else "Guide",
+                            style = MaterialTheme.typography.labelLarge,
                             color = PrimaryGold
                         )
                     }
@@ -703,6 +872,7 @@ private fun TutorialBullet(title: String, desc: String) {
 @Composable
 fun PauseOverlay(
     language: AppLanguage,
+    isOnline: Boolean = false,
     onResume: () -> Unit,
     onRestart: () -> Unit,
     onOpenSettings: () -> Unit,
@@ -728,7 +898,11 @@ fun PauseOverlay(
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Text(
-                text = if (isKo) "일시정지" else "Paused",
+                text = if (isOnline) {
+                    if (isKo) "온라인 전투 메뉴" else "Online Match Menu"
+                } else {
+                    if (isKo) "일시정지" else "Paused"
+                },
                 style = MaterialTheme.typography.headlineMedium,
                 color = PrimaryGold
             )
@@ -744,17 +918,19 @@ fun PauseOverlay(
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(if (isKo) "계속하기" else "Resume", style = MaterialTheme.typography.titleMedium, color = DeepNavyOutline)
             }
-            Button(
-                onClick = onRestart,
-                colors = ButtonDefaults.buttonColors(containerColor = PlayerBlue),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(48.dp)
-                    .testTag("restart_button")
-            ) {
-                Icon(Icons.Rounded.Refresh, contentDescription = null)
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(if (isKo) "다시 시작" else "Restart", style = MaterialTheme.typography.titleMedium)
+            if (!isOnline) {
+                Button(
+                    onClick = onRestart,
+                    colors = ButtonDefaults.buttonColors(containerColor = PlayerBlue),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .testTag("restart_button")
+                ) {
+                    Icon(Icons.Rounded.Refresh, contentDescription = null)
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(if (isKo) "다시 시작" else "Restart", style = MaterialTheme.typography.titleMedium)
+                }
             }
             Button(
                 onClick = onOpenSettings,
@@ -774,7 +950,15 @@ fun PauseOverlay(
                     .height(48.dp)
                     .testTag("main_menu_button")
             ) {
-                Text(if (isKo) "메인 화면으로" else "Main Menu", style = MaterialTheme.typography.titleMedium, color = Color.White)
+                Text(
+                    text = if (isOnline) {
+                        if (isKo) "기권 및 나가기" else "Forfeit & Exit"
+                    } else {
+                        if (isKo) "메인 화면으로" else "Main Menu"
+                    },
+                    style = MaterialTheme.typography.titleMedium,
+                    color = if (isOnline) DangerRed else Color.White
+                )
             }
         }
     }
@@ -784,20 +968,29 @@ fun PauseOverlay(
 fun GameOverOverlay(
     state: BattleHudState,
     language: AppLanguage,
+    progression: MatchProgressionResult? = null,
     onPlayAgain: () -> Unit,
+    onBackToLobby: (() -> Unit)? = null,
     onMainMenu: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val isKo = language == AppLanguage.KO
     val winner = state.tanks.firstOrNull { it.id == state.winnerId }
-    val p1 = state.tanks.getOrNull(0)
+    val localTank = state.tanks.getOrNull(state.localTankIndex) ?: state.tanks.getOrNull(0)
+    val localWon = when (state.gameMode) {
+        GameMode.AI_VS_PLAYER -> winner?.id == 0
+        GameMode.ONLINE_PVP -> winner?.id == state.localTankIndex
+        GameMode.LOCAL_2P -> true
+    }
     val titleText = when {
-        state.gameMode == GameMode.AI_VS_PLAYER && winner?.id == 0 -> if (isKo) "승리!" else "VICTORY!"
+        state.gameMode == GameMode.AI_VS_PLAYER && localWon -> if (isKo) "승리!" else "VICTORY!"
         state.gameMode == GameMode.AI_VS_PLAYER -> if (isKo) "패배…" else "DEFEAT…"
+        state.gameMode == GameMode.ONLINE_PVP && localWon -> if (isKo) "온라인 승리!" else "ONLINE VICTORY!"
+        state.gameMode == GameMode.ONLINE_PVP -> if (isKo) "온라인 패배…" else "ONLINE DEFEAT…"
         winner != null -> if (isKo) "${winner.name} 승리!" else "${winner.name} WINS!"
         else -> if (isKo) "무승부!" else "DRAW!"
     }
-    val accent = if (winner?.id == 0 || state.gameMode == GameMode.LOCAL_2P) PrimaryGold else DangerRed
+    val accent = if (localWon) PrimaryGold else DangerRed
 
     Box(
         modifier = modifier
@@ -808,59 +1001,164 @@ fun GameOverOverlay(
     ) {
         Column(
             modifier = Modifier
-                .widthIn(max = 430.dp)
-                .fillMaxWidth(0.75f)
+                .widthIn(max = 460.dp)
+                .fillMaxWidth(0.8f)
                 .clip(RoundedCornerShape(26.dp))
                 .background(HudSurfaceDark)
                 .border(3.dp, accent, RoundedCornerShape(26.dp))
-                .padding(24.dp),
+                .padding(20.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Icon(
-                imageVector = Icons.Rounded.EmojiEvents,
-                contentDescription = null,
-                tint = accent,
-                modifier = Modifier.size(48.dp)
-            )
-            Text(
-                text = titleText,
-                style = MaterialTheme.typography.displayLarge,
-                color = accent
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Rounded.EmojiEvents,
+                    contentDescription = null,
+                    tint = accent,
+                    modifier = Modifier.size(40.dp)
+                )
+                Text(
+                    text = titleText,
+                    style = MaterialTheme.typography.headlineLarge,
+                    color = accent
+                )
+            }
+
+            // 레벨업 & 경험치/랭킹 포인트 보상 배너
+            if (progression != null) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color(0xFF152946))
+                        .border(
+                            width = 2.dp,
+                            color = if (progression.leveledUp) PrimaryGold else PlayerBlue,
+                            shape = RoundedCornerShape(16.dp)
+                        )
+                        .padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    if (progression.leveledUp) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(PrimaryGold)
+                                .padding(horizontal = 10.dp, vertical = 4.dp),
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.AutoAwesome,
+                                contentDescription = null,
+                                tint = DeepNavyOutline,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = if (isKo) {
+                                    "LEVEL UP!  LV.${progression.oldLevel} → LV.${progression.newLevel}"
+                                } else {
+                                    "LEVEL UP!  LV.${progression.oldLevel} → LV.${progression.newLevel}"
+                                },
+                                fontFamily = FredokaFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 15.sp,
+                                color = DeepNavyOutline
+                            )
+                        }
+                    }
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "LV.${progression.newLevel}  (+${progression.xpGained} EXP)",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = SuccessGreen
+                        )
+                        val rpSign = if (progression.rpDelta >= 0L) "+" else ""
+                        Text(
+                            text = "${rpSign}${progression.rpDelta} RP  (${progression.newRankPoints} RP)",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = if (progression.rpDelta >= 0L) PrimaryGold else DangerRed
+                        )
+                    }
+
+                    val xpFrac = (progression.newXp.toFloat() / progression.xpNeededNext.coerceAtLeast(1L).toFloat())
+                        .coerceIn(0f, 1f)
+                    LinearProgressIndicator(
+                        progress = { xpFrac },
+                        color = SuccessGreen,
+                        trackColor = Color(0xFF0C1829),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(9.dp)
+                            .clip(RoundedCornerShape(50))
+                    )
+                    Text(
+                        text = "${progression.newXp} / ${progression.xpNeededNext} EXP",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextMuted
+                    )
+                }
+            }
 
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(14.dp))
                     .background(Color(0xFF102036))
-                    .padding(12.dp),
+                    .padding(10.dp),
                 horizontalArrangement = Arrangement.SpaceEvenly
             ) {
                 StatChip(if (isKo) "진행 턴" else "Turns", "${state.turnNumber}")
-                StatChip(if (isKo) "입힌 피해" else "Damage", "${p1?.totalDamageDealt ?: 0}")
-                StatChip(if (isKo) "직격 횟수" else "Direct Hits", "${p1?.directHits ?: 0}")
+                StatChip(if (isKo) "입힌 피해" else "Damage", "${localTank?.totalDamageDealt ?: 0}")
+                StatChip(if (isKo) "직격 횟수" else "Direct Hits", "${localTank?.directHits ?: 0}")
             }
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Button(
-                    onClick = onPlayAgain,
-                    colors = ButtonDefaults.buttonColors(containerColor = PrimaryGoldDark),
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(50.dp)
-                        .testTag("play_again_button")
-                ) {
-                    Text(if (isKo) "다시 대전" else "Play Again", style = MaterialTheme.typography.titleMedium, color = Color.White)
+                if (state.gameMode == GameMode.ONLINE_PVP && onBackToLobby != null) {
+                    Button(
+                        onClick = onBackToLobby,
+                        colors = ButtonDefaults.buttonColors(containerColor = SuccessGreen),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp)
+                            .testTag("back_to_lobby_button")
+                    ) {
+                        Text(
+                            text = if (isKo) "온라인 대기실로" else "Online Lobby",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = DeepNavyOutline
+                        )
+                    }
+                } else {
+                    Button(
+                        onClick = onPlayAgain,
+                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryGoldDark),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(48.dp)
+                            .testTag("play_again_button")
+                    ) {
+                        Text(if (isKo) "다시 대전" else "Play Again", style = MaterialTheme.typography.titleMedium, color = Color.White)
+                    }
                 }
                 OutlinedButton(
                     onClick = onMainMenu,
                     modifier = Modifier
                         .weight(1f)
-                        .height(50.dp)
+                        .height(48.dp)
                         .testTag("result_main_menu_button")
                 ) {
                     Text(if (isKo) "메인으로" else "Main Menu", style = MaterialTheme.typography.titleMedium, color = Color.White)

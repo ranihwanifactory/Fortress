@@ -1,0 +1,303 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 1. Global Safety Net (default deny)
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 2. Hardened Global Helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isValidMapTheme(theme) {
+      return theme in ['GRASSLAND', 'DESERT', 'SNOW', 'VOLCANO', 'ISLAND', 'SPACE'];
+    }
+
+    function isValidWeapon(weapon) {
+      return weapon in ['STANDARD', 'DOUBLE', 'POWER', 'WATER', 'POOP', 'GAS', 'TRASH'];
+    }
+
+    function isValidItem(item) {
+      return item in ['', 'HEAL', 'FUEL_BOOST', 'SHIELD'];
+    }
+
+    // 3. Entity Validation Blueprints
+    function isValidPlayerProfile(data) {
+      return data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.nickname is string && data.nickname.size() >= 1 && data.nickname.size() <= 24 &&
+             data.listedInRanking is bool &&
+             data.level is int && data.level >= 1 && data.level <= 999 &&
+             data.xp is int && data.xp >= 0 && data.xp <= 1000000 &&
+             data.totalXp is int && data.totalXp >= 0 && data.totalXp <= 100000000 &&
+             data.wins is int && data.wins >= 0 && data.wins <= 1000000 &&
+             data.losses is int && data.losses >= 0 && data.losses <= 1000000 &&
+             data.onlineWins is int && data.onlineWins >= 0 && data.onlineWins <= 1000000 &&
+             data.onlineLosses is int && data.onlineLosses >= 0 && data.onlineLosses <= 1000000 &&
+             data.rankPoints is int && data.rankPoints >= 0 && data.rankPoints <= 999999 &&
+             data.winStreak is int && data.winStreak >= 0 && data.winStreak <= 100000 &&
+             data.bestWinStreak is int && data.bestWinStreak >= 0 && data.bestWinStreak <= 100000 &&
+             data.totalDamage is int && data.totalDamage >= 0 && data.totalDamage <= 1000000000 &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidMatchRoom(data) {
+      return data.roomCode is string && data.roomCode.size() == 6 && data.roomCode.matches('^[A-Z0-9]{6}$') &&
+             data.roomTitle is string && data.roomTitle.size() >= 1 && data.roomTitle.size() <= 36 &&
+             data.hostUid is string && data.hostUid.size() >= 1 && data.hostUid.size() <= 128 &&
+             data.hostName is string && data.hostName.size() >= 1 && data.hostName.size() <= 24 &&
+             data.hostLevel is int && data.hostLevel >= 1 && data.hostLevel <= 999 &&
+             data.guestUid is string && data.guestUid.size() <= 128 &&
+             data.guestName is string && data.guestName.size() <= 24 &&
+             data.guestLevel is int && data.guestLevel >= 0 && data.guestLevel <= 999 &&
+             data.guestReady is bool &&
+             data.participantUids is list && data.participantUids.size() >= 1 && data.participantUids.size() <= 2 &&
+             data.participantUids[0] is string &&
+             isValidMapTheme(data.mapTheme) &&
+             data.terrainSeed is int &&
+             data.status in ['WAITING', 'PLAYING', 'FINISHED'] &&
+             data.activeTurnUid is string && data.activeTurnUid.size() <= 128 &&
+             data.turnSeq is int && data.turnSeq >= 0 && data.turnSeq <= 10000 &&
+             data.windForce is int && data.windForce >= -10 && data.windForce <= 10 &&
+             data.lastActionType in ['NONE', 'FIRE', 'TIMEOUT', 'FORFEIT'] &&
+             data.lastActionUid is string && data.lastActionUid.size() <= 128 &&
+             data.lastTankX is number && data.lastTankX >= 0 && data.lastTankX <= 3000 &&
+             data.lastTankY is number && data.lastTankY >= 0 && data.lastTankY <= 1500 &&
+             data.lastFacingRight is bool &&
+             data.lastAimAngle is number && data.lastAimAngle >= 0 && data.lastAimAngle <= 90 &&
+             data.lastPower is number && data.lastPower >= 0 && data.lastPower <= 1 &&
+             isValidWeapon(data.lastWeapon) &&
+             isValidItem(data.lastUsedItem) &&
+             data.winnerUid is string && data.winnerUid.size() <= 128 &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidRoomInvite(data) {
+      return isValidId(data.roomId) &&
+             data.roomCode is string && data.roomCode.size() == 6 && data.roomCode.matches('^[A-Z0-9]{6}$') &&
+             data.roomTitle is string && data.roomTitle.size() >= 1 && data.roomTitle.size() <= 36 &&
+             isValidMapTheme(data.mapTheme) &&
+             data.fromUid is string && data.fromUid.size() >= 1 && data.fromUid.size() <= 128 &&
+             data.fromName is string && data.fromName.size() >= 1 && data.fromName.size() <= 24 &&
+             data.toUid is string && data.toUid.size() >= 1 && data.toUid.size() <= 128 &&
+             data.toName is string && data.toName.size() >= 1 && data.toName.size() <= 24 &&
+             data.status in ['PENDING', 'ACCEPTED', 'DECLINED'] &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    // Concise MatchRoom action predicates to stay well under CEL expression limits
+    function canWaitingRoomUpdate(uid, prev, next, changed) {
+      return prev.status == 'WAITING' && (
+        // Action 1: Guest joins open waiting room
+        (prev.guestUid == '' && uid != prev.hostUid && next.guestUid == uid &&
+         next.guestName.size() >= 1 && next.guestLevel >= 1 &&
+         next.participantUids == [prev.hostUid, uid] &&
+         changed.hasOnly(['guestUid', 'guestName', 'guestLevel', 'guestReady', 'participantUids', 'updatedAt'])) ||
+        // Action 2: Guest toggles ready
+        (uid == prev.guestUid && next.guestUid == prev.guestUid &&
+         changed.hasOnly(['guestReady', 'updatedAt'])) ||
+        // Action 3: Guest leaves waiting room
+        (uid == prev.guestUid && next.guestUid == '' && next.guestName == '' &&
+         next.guestLevel == 0 && next.guestReady == false &&
+         next.participantUids == [prev.hostUid] &&
+         changed.hasOnly(['guestUid', 'guestName', 'guestLevel', 'guestReady', 'participantUids', 'updatedAt'])) ||
+        // Action 4: Host changes map while waiting
+        (uid == prev.hostUid && next.status == 'WAITING' &&
+         changed.hasOnly(['mapTheme', 'terrainSeed', 'updatedAt'])) ||
+        // Action 5: Host starts battle when guest is present
+        (uid == prev.hostUid && prev.guestUid != '' && next.status == 'PLAYING' &&
+         next.activeTurnUid == prev.hostUid &&
+         changed.hasOnly(['status', 'activeTurnUid', 'terrainSeed', 'windForce', 'updatedAt']))
+      );
+    }
+
+    function canPlayingRoomUpdate(uid, prev, next, changed) {
+      return prev.status == 'PLAYING' && uid in prev.participantUids && (
+        // Action 6: Active player submits turn shot or timeout
+        (prev.activeTurnUid == uid && next.status == 'PLAYING' &&
+         next.lastActionUid == uid && next.turnSeq == prev.turnSeq + 1 &&
+         next.activeTurnUid in prev.participantUids && next.activeTurnUid != uid &&
+         changed.hasOnly([
+           'activeTurnUid', 'turnSeq', 'windForce', 'lastActionType', 'lastActionUid',
+           'lastTankX', 'lastTankY', 'lastFacingRight', 'lastAimAngle', 'lastPower',
+           'lastWeapon', 'lastUsedItem', 'updatedAt'
+         ])) ||
+        // Action 7: Participant finishes match or forfeits (terminal state)
+        (next.status == 'FINISHED' && next.winnerUid in prev.participantUids &&
+         changed.hasOnly(['status', 'winnerUid', 'lastActionType', 'lastActionUid', 'updatedAt']))
+      );
+    }
+
+    // 4. Player Profiles & Leaderboard (non-PII gaming stats)
+    match /player_profiles/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) &&
+                    (request.auth.uid == userId || existing().listedInRanking == true);
+
+      allow list: if isSignedIn() && existing().listedInRanking == true;
+
+      allow create: if isSignedIn() &&
+                       isValidId(userId) &&
+                       request.auth.uid == userId &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().keys().hasAll([
+                         'userId', 'nickname', 'listedInRanking', 'level', 'xp', 'totalXp',
+                         'wins', 'losses', 'onlineWins', 'onlineLosses', 'rankPoints',
+                         'winStreak', 'bestWinStreak', 'totalDamage', 'createdAt', 'updatedAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'userId', 'nickname', 'listedInRanking', 'level', 'xp', 'totalXp',
+                         'wins', 'losses', 'onlineWins', 'onlineLosses', 'rankPoints',
+                         'winStreak', 'bestWinStreak', 'totalDamage', 'createdAt', 'updatedAt'
+                       ]) &&
+                       isValidPlayerProfile(incoming());
+
+      allow update: if isSignedIn() &&
+                       isValidId(userId) &&
+                       isValidPlayerProfile(incoming()) &&
+                       request.auth.uid == userId &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       (
+                         incoming().diff(existing()).affectedKeys().hasOnly(['nickname', 'listedInRanking', 'updatedAt']) ||
+                         incoming().diff(existing()).affectedKeys().hasOnly([
+                           'level', 'xp', 'totalXp', 'wins', 'losses',
+                           'onlineWins', 'onlineLosses', 'rankPoints',
+                           'winStreak', 'bestWinStreak', 'totalDamage', 'updatedAt'
+                         ])
+                       );
+
+      allow delete: if isSignedIn() && isValidId(userId) && request.auth.uid == userId;
+    }
+
+    // 5. Multiplayer Match Rooms & Real-Time Turn Sync
+    match /match_rooms/{roomId} {
+      allow get: if isSignedIn() && isValidId(roomId) &&
+                    (existing().status == 'WAITING' || request.auth.uid in existing().participantUids);
+
+      allow list: if isSignedIn() &&
+                     (existing().status == 'WAITING' || request.auth.uid in existing().participantUids);
+
+      allow create: if isSignedIn() &&
+                       isValidId(roomId) &&
+                       isValidMatchRoom(incoming()) &&
+                       incoming().hostUid == request.auth.uid &&
+                       incoming().guestUid == '' &&
+                       incoming().guestName == '' &&
+                       incoming().guestLevel == 0 &&
+                       incoming().guestReady == false &&
+                       incoming().status == 'WAITING' &&
+                       incoming().participantUids == [request.auth.uid] &&
+                       incoming().turnSeq == 0 &&
+                       incoming().lastActionType == 'NONE' &&
+                       incoming().winnerUid == '' &&
+                       incoming().keys().hasAll([
+                         'roomCode', 'roomTitle', 'hostUid', 'hostName', 'hostLevel',
+                         'guestUid', 'guestName', 'guestLevel', 'guestReady', 'participantUids',
+                         'mapTheme', 'terrainSeed', 'status', 'activeTurnUid', 'turnSeq',
+                         'windForce', 'lastActionType', 'lastActionUid', 'lastTankX', 'lastTankY',
+                         'lastFacingRight', 'lastAimAngle', 'lastPower', 'lastWeapon', 'lastUsedItem',
+                         'winnerUid', 'createdAt', 'updatedAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'roomCode', 'roomTitle', 'hostUid', 'hostName', 'hostLevel',
+                         'guestUid', 'guestName', 'guestLevel', 'guestReady', 'participantUids',
+                         'mapTheme', 'terrainSeed', 'status', 'activeTurnUid', 'turnSeq',
+                         'windForce', 'lastActionType', 'lastActionUid', 'lastTankX', 'lastTankY',
+                         'lastFacingRight', 'lastAimAngle', 'lastPower', 'lastWeapon', 'lastUsedItem',
+                         'winnerUid', 'createdAt', 'updatedAt'
+                       ]);
+
+      allow update: if isSignedIn() &&
+                       isValidId(roomId) &&
+                       isValidMatchRoom(incoming()) &&
+                       existing().status != 'FINISHED' &&
+                       incoming().hostUid == existing().hostUid &&
+                       incoming().roomCode == existing().roomCode &&
+                       incoming().createdAt == existing().createdAt &&
+                       (
+                         canWaitingRoomUpdate(
+                           request.auth.uid, existing(), incoming(),
+                           incoming().diff(existing()).affectedKeys()
+                         ) ||
+                         canPlayingRoomUpdate(
+                           request.auth.uid, existing(), incoming(),
+                           incoming().diff(existing()).affectedKeys()
+                         )
+                       );
+
+      allow delete: if isSignedIn() &&
+                       isValidId(roomId) &&
+                       request.auth.uid == existing().hostUid &&
+                       existing().status == 'WAITING';
+    }
+
+    // 6. Direct Player-to-Player Room Invitations
+    match /room_invites/{inviteId} {
+      allow get: if isSignedIn() && isValidId(inviteId) &&
+                    (existing().toUid == request.auth.uid || existing().fromUid == request.auth.uid);
+
+      allow list: if isSignedIn() &&
+                     (existing().toUid == request.auth.uid || existing().fromUid == request.auth.uid);
+
+      allow create: if isSignedIn() &&
+                       isValidId(inviteId) &&
+                       isValidRoomInvite(incoming()) &&
+                       incoming().fromUid == request.auth.uid &&
+                       incoming().toUid != request.auth.uid &&
+                       incoming().status == 'PENDING' &&
+                       incoming().keys().hasAll([
+                         'roomId', 'roomCode', 'roomTitle', 'mapTheme',
+                         'fromUid', 'fromName', 'toUid', 'toName',
+                         'status', 'createdAt', 'updatedAt'
+                       ]) &&
+                       incoming().keys().hasOnly([
+                         'roomId', 'roomCode', 'roomTitle', 'mapTheme',
+                         'fromUid', 'fromName', 'toUid', 'toName',
+                         'status', 'createdAt', 'updatedAt'
+                       ]) &&
+                       exists(/databases/$(database)/documents/match_rooms/$(incoming().roomId)) &&
+                       get(/databases/$(database)/documents/match_rooms/$(incoming().roomId)).data.hostUid == request.auth.uid;
+
+      allow update: if isSignedIn() &&
+                       isValidId(inviteId) &&
+                       isValidRoomInvite(incoming()) &&
+                       existing().status == 'PENDING' &&
+                       incoming().fromUid == existing().fromUid &&
+                       incoming().toUid == existing().toUid &&
+                       incoming().roomId == existing().roomId &&
+                       incoming().createdAt == existing().createdAt &&
+                       (
+                         (
+                           request.auth.uid == existing().toUid &&
+                           incoming().status in ['ACCEPTED', 'DECLINED'] &&
+                           incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])
+                         ) ||
+                         (
+                           request.auth.uid == existing().fromUid &&
+                           incoming().status == 'DECLINED' &&
+                           incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])
+                         )
+                       );
+
+      allow delete: if isSignedIn() && isValidId(inviteId) &&
+                       (existing().fromUid == request.auth.uid || existing().toUid == request.auth.uid);
+    }
+  }
+}

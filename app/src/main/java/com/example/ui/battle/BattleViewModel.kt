@@ -3,6 +3,7 @@ package com.example.ui.battle
 import android.app.Application
 import android.content.Context
 import androidx.lifecycle.AndroidViewModel
+import com.example.firebase.MatchRoom
 import com.example.game.audio.BgmTrack
 import com.example.game.audio.GameAudioManager
 import com.example.game.audio.SfxType
@@ -28,6 +29,9 @@ class BattleViewModel(application: Application) : AndroidViewModel(application) 
     val audio = GameAudioManager(application)
 
     private val prefs = application.getSharedPreferences("cannon_game_prefs", Context.MODE_PRIVATE)
+
+    private var lastPlayerNickname: String? = null
+    private var lastPlayerHpBonus: Int = 0
 
     private val _hudState = MutableStateFlow(engine.buildHudState())
     val hudState: StateFlow<BattleHudState> = _hudState.asStateFlow()
@@ -68,17 +72,79 @@ class BattleViewModel(application: Application) : AndroidViewModel(application) 
         syncStates()
     }
 
-    fun startMatch(mode: GameMode) {
+    fun startMatch(
+        mode: GameMode,
+        playerNickname: String? = null,
+        playerHpBonus: Int = 0
+    ) {
+        lastPlayerNickname = playerNickname
+        lastPlayerHpBonus = playerHpBonus
         audio.playSfx(SfxType.BUTTON, pitch = 1.15f)
-        engine.startNewMatch(mode, _selectedDifficulty.value, _selectedMap.value)
+        engine.startNewMatch(
+            mode = mode,
+            diff = _selectedDifficulty.value,
+            theme = _selectedMap.value,
+            playerNickname = playerNickname,
+            playerHpBonus = playerHpBonus
+        )
         audio.playBgm(BgmTrack.BATTLE)
+        syncStates()
+    }
+
+    fun startOnlineMatch(room: MatchRoom, localUid: String) {
+        audio.playSfx(SfxType.BUTTON, pitch = 1.15f)
+        val theme = room.parsedMapTheme()
+        _selectedMap.value = theme
+        engine.startOnlineMatch(
+            seed = room.terrainSeed,
+            theme = theme,
+            hostName = room.hostName.ifBlank { "1P" },
+            guestName = room.guestName.ifBlank { "2P" },
+            localIsHost = room.hostUid == localUid,
+            initialWindForce = room.windForce.toInt()
+        )
+        audio.playBgm(BgmTrack.BATTLE)
+        syncStates()
+    }
+
+    fun applyRemoteTurn(room: MatchRoom) {
+        engine.applyRemoteTurnAction(
+            actionType = room.lastActionType,
+            tankX = room.lastTankX.toFloat(),
+            tankY = room.lastTankY.toFloat(),
+            facingRight = room.lastFacingRight,
+            aimAngleDeg = room.lastAimAngle.toFloat(),
+            power = room.lastPower.toFloat(),
+            weapon = room.parsedWeapon(),
+            usedItem = room.parsedUsedItem(),
+            nextWindForce = room.windForce.toInt()
+        )
+        processAudioEvents()
+        syncStates()
+    }
+
+    fun syncOnlineWind(nextWindForce: Int) {
+        engine.syncOnlineWind(nextWindForce)
+        syncStates()
+    }
+
+    fun forceOnlineGameOver(winnerTankIndex: Int, reason: String? = null) {
+        engine.forceOnlineGameOver(winnerTankIndex, reason)
+        processAudioEvents()
         syncStates()
     }
 
     fun restartMatch() {
         audio.playSfx(SfxType.BUTTON)
         val current = _hudState.value
-        engine.startNewMatch(current.gameMode, current.difficulty, current.mapTheme)
+        if (current.gameMode == GameMode.ONLINE_PVP) return
+        engine.startNewMatch(
+            mode = current.gameMode,
+            diff = current.difficulty,
+            theme = current.mapTheme,
+            playerNickname = lastPlayerNickname,
+            playerHpBonus = lastPlayerHpBonus
+        )
         audio.playBgm(BgmTrack.BATTLE)
         syncStates()
     }
@@ -179,7 +245,11 @@ class BattleViewModel(application: Application) : AndroidViewModel(application) 
 
     fun onAppPause() {
         audio.onLifecyclePause()
-        if (_hudState.value.turnPhase != TurnPhase.TITLE && _hudState.value.turnPhase != TurnPhase.GAME_OVER) {
+        val state = _hudState.value
+        if (state.turnPhase != TurnPhase.TITLE &&
+            state.turnPhase != TurnPhase.GAME_OVER &&
+            state.gameMode != GameMode.ONLINE_PVP
+        ) {
             engine.togglePause(true)
             syncStates()
         }

@@ -103,8 +103,8 @@ fun BattleHud(
     modifier: Modifier = Modifier
 ) {
     val activeTank = state.tanks.getOrNull(state.activeTankIndex)
-    val canControl = state.turnPhase == TurnPhase.PLAYER_AIMING && activeTank?.isAi == false && !state.isPaused
-    val canFireRelease = state.turnPhase == TurnPhase.CHARGING && activeTank?.isAi == false && !state.isPaused
+    val canControl = state.turnPhase == TurnPhase.PLAYER_AIMING && activeTank?.isAi == false && state.isLocalPlayerTurn && !state.isPaused
+    val canFireRelease = state.turnPhase == TurnPhase.CHARGING && activeTank?.isAi == false && state.isLocalPlayerTurn && !state.isPaused
     val isKo = language == AppLanguage.KO
 
     Box(
@@ -193,7 +193,7 @@ fun BattleHud(
         }
 
         // 2) 하단 조작 HUD
-        if (activeTank != null && !activeTank.isAi &&
+        if (activeTank != null && !activeTank.isAi && state.isLocalPlayerTurn &&
             (state.turnPhase == TurnPhase.PLAYER_AIMING || state.turnPhase == TurnPhase.CHARGING)
         ) {
             Row(
