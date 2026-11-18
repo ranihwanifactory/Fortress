@@ -387,6 +387,44 @@ data class DamagePopup(
     val duration: Float = 1.3f
 )
 
+enum class PropType {
+    TNT_BARREL,
+    SUPPLY_CRATE,
+    RICOCHET_BUMPER,
+    UPDRAFT_VENT
+}
+
+data class BattlePropState(
+    val id: Int,
+    val type: PropType,
+    val x: Float,
+    val y: Float,
+    val radius: Float = 22f,
+    val width: Float = 44f,
+    val height: Float = 48f,
+    val bounceAnimTimer: Float = 0f,
+    val isActive: Boolean = true
+)
+
+enum class SceneryKind {
+    OAK_TREE,
+    PINE_TREE,
+    CACTUS,
+    PALM_TREE,
+    CRYSTAL,
+    SPACE_BEACON,
+    BATTLE_FLAG
+}
+
+data class SceneryProp(
+    val id: Int,
+    val x: Float,
+    val y: Float,
+    val kind: SceneryKind,
+    val scale: Float = 1f,
+    val isAlive: Boolean = true
+)
+
 data class BattleRenderSnapshot(
     val worldWidth: Float,
     val worldHeight: Float,
@@ -402,6 +440,8 @@ data class BattleRenderSnapshot(
     val tanks: List<TankState>,
     val projectiles: List<ProjectileState>,
     val gasClouds: List<GasCloudZone>,
+    val props: List<BattlePropState>,
+    val sceneryProps: List<SceneryProp>,
     val explosions: List<ExplosionEffect>,
     val particles: List<ParticleState>,
     val weatherParticles: List<WeatherParticle>,

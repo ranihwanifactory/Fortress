@@ -4,6 +4,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import com.example.game.model.AppLanguage
 import com.example.game.model.BattleHudState
+import com.example.game.model.BattlePropState
 import com.example.game.model.BattleRenderSnapshot
 import com.example.game.model.DamagePopup
 import com.example.game.model.Difficulty
@@ -14,6 +15,9 @@ import com.example.game.model.ItemType
 import com.example.game.model.MapTheme
 import com.example.game.model.ParticleState
 import com.example.game.model.ProjectileState
+import com.example.game.model.PropType
+import com.example.game.model.SceneryKind
+import com.example.game.model.SceneryProp
 import com.example.game.model.TankExpression
 import com.example.game.model.TankState
 import com.example.game.model.TurnPhase
@@ -28,6 +32,7 @@ import com.example.ui.theme.PrimaryGold
 import com.example.ui.theme.SuccessGreen
 import com.example.ui.theme.WarningAmber
 import kotlin.math.PI
+import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.hypot
 import kotlin.math.max
@@ -38,14 +43,14 @@ import kotlin.random.Random
 sealed interface EngineAudioEvent {
     data class Fire(val heavy: Boolean) : EngineAudioEvent
     data class WeaponImpact(val weapon: WeaponType, val hitTank: Boolean, val isSubMunition: Boolean = false) : EngineAudioEvent
+    data object Ricochet : EngineAudioEvent
     data object ItemUse : EngineAudioEvent
     data object TurnStart : EngineAudioEvent
     data class GameOver(val playerWon: Boolean) : EngineAudioEvent
 }
 
 /**
- * 7종 무기(기본탄, 2연발, 강력탄, 물포탄, 똥포탄, 가스포탄, 쓰레기탄) 및
- * 특수 효과(물 넉백+연료감소, 똥 악취 DoT, 독가스 구름 장판, 쓰레기 3발 확산)를 지원하는 전투 엔진.
+ * 7종 무기 + 파괴 가능한 성벽/공중발판 + 인터랙티브 지형지물(TNT 화약통, 보급 상자, 도탄 범퍼, 상승 기류)을 지원하는 전투 엔진.
  */
 class BattleEngine {
 
@@ -84,6 +89,8 @@ class BattleEngine {
     private val tanks = mutableListOf<TankState>()
     private val projectiles = mutableListOf<ProjectileState>()
     private val gasClouds = mutableListOf<GasCloudZone>()
+    private val props = mutableListOf<BattlePropState>()
+    private val sceneryProps = mutableListOf<SceneryProp>()
     private val explosions = mutableListOf<ExplosionEffect>()
     private val particles = mutableListOf<ParticleState>()
     private val weatherParticles = mutableListOf<WeatherParticle>()
@@ -92,6 +99,8 @@ class BattleEngine {
 
     private var nextProjectileId = 1
     private var nextGasId = 1
+    private var nextPropId = 1
+    private var nextSceneryId = 1
     private var nextPopupId = 1
 
     private var animTime = 0f
@@ -119,6 +128,7 @@ class BattleEngine {
     init {
         terrain.generate(MapTheme.GRASSLAND)
         setupTanks(GameMode.AI_VS_PLAYER)
+        setupBattlefieldProps(MapTheme.GRASSLAND)
         initWeatherParticles(MapTheme.GRASSLAND)
     }
 
@@ -131,6 +141,7 @@ class BattleEngine {
             mapTheme = theme
             terrain.generate(theme, System.currentTimeMillis())
             setupTanks(gameMode)
+            setupBattlefieldProps(theme)
             initWeatherParticles(theme)
         } else {
             mapTheme = theme
@@ -165,6 +176,7 @@ class BattleEngine {
 
         terrain.generate(theme, System.currentTimeMillis())
         setupTanks(mode)
+        setupBattlefieldProps(theme)
         initWeatherParticles(theme)
 
         cameraX = tanks[0].x
@@ -174,8 +186,8 @@ class BattleEngine {
 
     private fun setupTanks(mode: GameMode) {
         tanks.clear()
-        val p1X = 300f + Random.nextFloat() * 140f
-        val p2X = terrain.worldWidth - (300f + Random.nextFloat() * 140f)
+        val p1X = 270f + Random.nextFloat() * 130f
+        val p2X = terrain.worldWidth - (270f + Random.nextFloat() * 130f)
         val p1Y = terrain.findTopSurfaceY(p1X)
         val p2Y = terrain.findTopSurfaceY(p2X)
 
@@ -211,6 +223,98 @@ class BattleEngine {
                 accentColor = EnemyCoralLight
             )
         )
+    }
+
+    private fun setupBattlefieldProps(theme: MapTheme) {
+        props.clear()
+        sceneryProps.clear()
+
+        // 1) TNT 폭발 화약통 2개 (양측 언덕 중간 배치)
+        listOf(640f + Random.nextFloat() * 50f, 1520f + Random.nextFloat() * 50f).forEach { px ->
+            val py = terrain.findTopSurfaceY(px)
+            props.add(
+                BattlePropState(
+                    id = nextPropId++,
+                    type = PropType.TNT_BARREL,
+                    x = px,
+                    y = py,
+                    radius = 22f,
+                    width = 36f,
+                    height = 44f
+                )
+            )
+        }
+
+        // 2) 전술 보급 상자 2개 (부유 발판 위 또는 언덕에 배치)
+        listOf(770f, 1430f).forEach { px ->
+            val py = terrain.findTopSurfaceY(px)
+            props.add(
+                BattlePropState(
+                    id = nextPropId++,
+                    type = PropType.SUPPLY_CRATE,
+                    x = px,
+                    y = py,
+                    radius = 22f,
+                    width = 38f,
+                    height = 38f
+                )
+            )
+        }
+
+        // 3) 공중 도탄 범퍼 2개 (포탄을 튕겨내어 트릭샷 가능)
+        listOf(880f, 1320f).forEach { bx ->
+            val surface = terrain.findTopSurfaceY(bx)
+            props.add(
+                BattlePropState(
+                    id = nextPropId++,
+                    type = PropType.RICOCHET_BUMPER,
+                    x = bx,
+                    y = (surface - 210f).coerceIn(180f, 430f),
+                    radius = 28f,
+                    width = 56f,
+                    height = 56f
+                )
+            )
+        }
+
+        // 4) 상승 기류 간헐천 1개 (중앙 근처 지면에서 위로 솟구치는 바람 기둥)
+        val ventX = if (Random.nextBoolean()) 955f else 1245f
+        val ventY = terrain.findTopSurfaceY(ventX)
+        props.add(
+            BattlePropState(
+                id = nextPropId++,
+                type = PropType.UPDRAFT_VENT,
+                x = ventX,
+                y = ventY,
+                radius = 36f,
+                width = 76f,
+                height = 380f
+            )
+        )
+
+        // 5) 테마별 장식 지형지물 (나무, 선인장, 소나무, 수정, 야자수, 우주 안테나, 깃발)
+        val sceneryXs = listOf(160f, 490f, 710f, 840f, 1020f, 1180f, 1360f, 1620f, 1990f)
+        sceneryXs.forEachIndexed { idx, sx ->
+            if (tanks.any { abs(it.x - sx) < 75f }) return@forEachIndexed
+            val sy = terrain.findTopSurfaceY(sx)
+            val kind = when (theme) {
+                MapTheme.GRASSLAND -> if (idx % 3 == 0) SceneryKind.BATTLE_FLAG else SceneryKind.OAK_TREE
+                MapTheme.DESERT -> SceneryKind.CACTUS
+                MapTheme.SNOW -> SceneryKind.PINE_TREE
+                MapTheme.VOLCANO -> SceneryKind.CRYSTAL
+                MapTheme.ISLAND -> SceneryKind.PALM_TREE
+                MapTheme.SPACE -> if (idx % 2 == 0) SceneryKind.SPACE_BEACON else SceneryKind.CRYSTAL
+            }
+            sceneryProps.add(
+                SceneryProp(
+                    id = nextSceneryId++,
+                    x = sx,
+                    y = sy,
+                    kind = kind,
+                    scale = 0.85f + (idx % 3) * 0.14f
+                )
+            )
+        }
     }
 
     private fun initWeatherParticles(theme: MapTheme) {
@@ -264,7 +368,6 @@ class BattleEngine {
             expression = if (t.dizzyTimer > 0f) TankExpression.DIZZY else TankExpression.NORMAL
         )
 
-        // 턴 시작 시 악취(똥포탄) 지속 피해 적용
         if (t.poisonTurns > 0 && t.isAlive) {
             val poisonDmg = 8
             val newHp = max(0, t.hp - poisonDmg)
@@ -287,7 +390,6 @@ class BattleEngine {
             }
         }
 
-        // 턴 시작 시 독가스 구름 장판 피해 체크
         if (t.isAlive) {
             val inGas = gasClouds.any { hypot(t.x - it.x, (t.y - 18f) - it.y) <= it.radius + 18f }
             if (inGas) {
@@ -312,7 +414,6 @@ class BattleEngine {
             }
         }
 
-        // 라운드 진행에 맞춰 가스 구름 수명 감소
         if (!isFirstTurn) {
             val gasIt = gasClouds.listIterator()
             while (gasIt.hasNext()) {
@@ -336,8 +437,8 @@ class BattleEngine {
             turnPhase = TurnPhase.PLAYER_AIMING
             statusBanner = when {
                 gameMode == GameMode.LOCAL_2P -> if (language == AppLanguage.KO) "${t.name} 턴!" else "${t.name}'s Turn!"
-                language == AppLanguage.KO -> "내 턴! 무기·각도·파워를 맞추세요"
-                else -> "Your Turn! Pick Weapon & Fire"
+                language == AppLanguage.KO -> "내 턴! 지형지물과 무기를 활용하세요"
+                else -> "Your Turn! Use Terrain Props & Fire"
             }
         }
     }
@@ -480,6 +581,7 @@ class BattleEngine {
 
         updateEffects(dt)
         updateAmbientStatusParticles(dt)
+        updatePropsAndScenery(dt)
         updateTankPhysicsAndFalling(dt)
         updateShake(dt)
 
@@ -514,11 +616,60 @@ class BattleEngine {
         }
     }
 
+    private fun updatePropsAndScenery(dt: Float) {
+        // 범퍼 바운스 타이머 감소 및 지면 지지 확인
+        for (i in props.indices) {
+            var p = props[i]
+            if (!p.isActive) continue
+            if (p.bounceAnimTimer > 0f) {
+                p = p.copy(bounceAnimTimer = max(0f, p.bounceAnimTimer - dt))
+            }
+            if (p.type == PropType.TNT_BARREL || p.type == PropType.SUPPLY_CRATE || p.type == PropType.UPDRAFT_VENT) {
+                val groundY = terrain.findGroundY(p.x, p.y - 4f, maxStepUp = 6f)
+                if (groundY == null || groundY > terrain.worldHeight + 20f) {
+                    p = p.copy(isActive = false)
+                } else if (groundY > p.y + 4f) {
+                    if (p.type == PropType.TNT_BARREL) {
+                        // 발밑이 무너지면 화약통 폭발!
+                        props[i] = p.copy(isActive = false)
+                        triggerTntExplosion(p, activeTankIndex)
+                        continue
+                    } else {
+                        p = p.copy(y = groundY)
+                    }
+                }
+            }
+            props[i] = p
+        }
+
+        // 장식 나무/바위 아래 지형이 파괴되면 파편이 되며 사라짐
+        for (i in sceneryProps.indices) {
+            val s = sceneryProps[i]
+            if (!s.isAlive) continue
+            if (!terrain.isSolidWorld(s.x, s.y + 8f)) {
+                sceneryProps[i] = s.copy(isAlive = false)
+                repeat(6) {
+                    particles.add(
+                        ParticleState(
+                            x = s.x + (Random.nextFloat() - 0.5f) * 20f,
+                            y = s.y - 14f,
+                            vx = (Random.nextFloat() - 0.5f) * 90f,
+                            vy = -40f - Random.nextFloat() * 70f,
+                            radius = 4f,
+                            color = Color(mapTheme.grassBodyHex),
+                            lifetime = 0.55f,
+                            gravityScale = 0.6f
+                        )
+                    )
+                }
+            }
+        }
+    }
+
     private fun updateAmbientStatusParticles(dt: Float) {
         stinkParticleTimer -= dt
         if (stinkParticleTimer <= 0f) {
-            stinkParticleTimer = 0.18f
-            // 악취 걸린 탱크 머리 위 방울
+            stinkParticleTimer = 0.16f
             tanks.forEach { t ->
                 if (t.isAlive && t.poisonTurns > 0) {
                     particles.add(
@@ -536,7 +687,6 @@ class BattleEngine {
                     )
                 }
             }
-            // 독가스 구름 내 거품 파티클
             gasClouds.forEach { g ->
                 val ang = Random.nextFloat() * (2f * PI.toFloat())
                 val rad = Random.nextFloat() * g.radius * 0.75f
@@ -553,6 +703,24 @@ class BattleEngine {
                         isSmoke = true
                     )
                 )
+            }
+            // 상승 기류 간헐천 기포/바람 입자
+            props.forEach { p ->
+                if (p.isActive && p.type == PropType.UPDRAFT_VENT) {
+                    particles.add(
+                        ParticleState(
+                            x = p.x + (Random.nextFloat() - 0.5f) * (p.width * 0.75f),
+                            y = p.y - 8f,
+                            vx = (Random.nextFloat() - 0.5f) * 16f,
+                            vy = -240f - Random.nextFloat() * 120f,
+                            radius = 3.5f + Random.nextFloat() * 2.5f,
+                            color = Color(0xFFCAF0F8),
+                            lifetime = 0.9f,
+                            gravityScale = -0.18f,
+                            isSmoke = true
+                        )
+                    )
+                }
             }
         }
     }
@@ -750,7 +918,7 @@ class BattleEngine {
         var bestPower = 0.6f
         var bestDist = Float.MAX_VALUE
 
-        val angleCandidates = listOf(25f, 32f, 38f, 45f, 52f, 60f, 68f, 75f)
+        val angleCandidates = listOf(28f, 36f, 44f, 52f, 60f, 68f, 75f)
         for (angle in angleCandidates) {
             for (pStep in 5..20) {
                 val power = pStep * 0.05f
@@ -826,6 +994,15 @@ class BattleEngine {
         for (step in 0 until 240) {
             vx += windForce * WIND_ACCEL * dt
             vy += GRAVITY * dt
+            // 상승 기류 반영
+            for (prop in props) {
+                if (prop.isActive && prop.type == PropType.UPDRAFT_VENT &&
+                    abs(x - prop.x) <= prop.width * 0.5f &&
+                    y in (prop.y - prop.height)..prop.y
+                ) {
+                    vy -= UPDRAFT_LIFT_ACCEL * dt
+                }
+            }
             x += vx * dt
             y += vy * dt
 
@@ -928,8 +1105,19 @@ class BattleEngine {
             val p = iterator.next()
             if (!p.active) continue
 
-            val newVx = p.vx + windForce * WIND_ACCEL * dt
-            val newVy = p.vy + GRAVITY * dt
+            var newVx = p.vx + windForce * WIND_ACCEL * dt
+            var newVy = p.vy + GRAVITY * dt
+
+            // 상승 기류 간헐천 통과 시 위로 부양!
+            for (prop in props) {
+                if (prop.isActive && prop.type == PropType.UPDRAFT_VENT &&
+                    abs(p.x - prop.x) <= prop.width * 0.5f &&
+                    p.y in (prop.y - prop.height)..prop.y
+                ) {
+                    newVy -= UPDRAFT_LIFT_ACCEL * dt
+                }
+            }
+
             val dx = newVx * dt
             val dy = newVy * dt
 
@@ -938,13 +1126,43 @@ class BattleEngine {
             var hitX = p.x + dx
             var hitY = p.y + dy
             var collided = false
+            var bounced = false
 
             for (s in 1..steps) {
                 val frac = s.toFloat() / steps.toFloat()
                 val sx = p.x + dx * frac
                 val sy = p.y + dy * frac
 
-                if (checkTankCollision(sx, sy, p.ownerId, p.isSubMunition) || terrain.isSolidWorld(sx, sy)) {
+                // 1) 공중 도탄 범퍼 충돌 검사
+                val bumperIdx = props.indexOfFirst { prop ->
+                    prop.isActive && prop.type == PropType.RICOCHET_BUMPER &&
+                        hypot(sx - prop.x, sy - prop.y) <= prop.radius + p.radius
+                }
+                if (bumperIdx >= 0) {
+                    val bumper = props[bumperIdx]
+                    val nxRaw = sx - bumper.x
+                    val nyRaw = sy - bumper.y
+                    val len = max(0.01f, hypot(nxRaw, nyRaw))
+                    val nx = nxRaw / len
+                    val ny = nyRaw / len
+                    val dot = newVx * nx + newVy * ny
+                    val refVx = (newVx - 2f * dot * nx) * 1.04f
+                    val refVy = (newVy - 2f * dot * ny) * 1.04f
+                    val pushOut = bumper.radius + p.radius + 4f
+
+                    hitX = bumper.x + nx * pushOut
+                    hitY = bumper.y + ny * pushOut
+                    newVx = refVx
+                    newVy = refVy
+                    props[bumperIdx] = bumper.copy(bounceAnimTimer = 0.35f)
+                    bounced = true
+                    spawnPopup(bumper.x, bumper.y - 36f, if (language == AppLanguage.KO) "도탄!" else "Bounce!", Color(0xFF4CC9F0))
+                    pendingAudioEvents.add(EngineAudioEvent.Ricochet)
+                    break
+                }
+
+                // 2) 지면 화약통 / 보급 상자 / 탱크 / 지형 충돌 검사
+                if (checkPropImpact(sx, sy) || checkTankCollision(sx, sy, p.ownerId, p.isSubMunition) || terrain.isSolidWorld(sx, sy)) {
                     hitX = sx
                     hitY = sy
                     collided = true
@@ -954,7 +1172,6 @@ class BattleEngine {
 
             if (collided) {
                 explodeAt(hitX, hitY, p.weapon, p.ownerId, p.isSubMunition)
-                // 쓰레기 포탄 본탄 착탄 시 고철 자탄 3개 사방으로 튀어오름
                 if (p.weapon == WeaponType.TRASH && !p.isSubMunition) {
                     val spreadVx = listOf(-170f, 0f, 170f)
                     spreadVx.forEachIndexed { idx, svx ->
@@ -984,7 +1201,7 @@ class BattleEngine {
                 continue
             }
 
-            if (Random.nextFloat() < 0.65f) {
+            if (bounced || Random.nextFloat() < 0.65f) {
                 val trailColor = when (p.weapon) {
                     WeaponType.WATER -> Color(0xFF90E0EF)
                     WeaponType.POOP -> Color(0xFFA98467)
@@ -1030,6 +1247,19 @@ class BattleEngine {
         }
     }
 
+    private fun checkPropImpact(px: Float, py: Float): Boolean {
+        for (prop in props) {
+            if (!prop.isActive) continue
+            if (prop.type == PropType.TNT_BARREL || prop.type == PropType.SUPPLY_CRATE) {
+                val cy = prop.y - prop.height * 0.5f
+                if (hypot(px - prop.x, py - cy) <= prop.radius + 3f) {
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
     private fun checkTankCollision(px: Float, py: Float, ownerId: Int, isSubMunition: Boolean): Boolean {
         for (t in tanks) {
             if (!t.isAlive) continue
@@ -1073,7 +1303,6 @@ class BattleEngine {
             duration = if (isSubMunition) 0.18f else 0.32f
         )
 
-        // 가스포탄: 지속 독가스 구름 생성
         if (weapon == WeaponType.GAS && !isSubMunition) {
             gasClouds.add(
                 GasCloudZone(
@@ -1086,6 +1315,23 @@ class BattleEngine {
                 )
             )
             spawnPopup(x, y - 50f, if (language == AppLanguage.KO) "독가스 구름!" else "Toxic Cloud!", Color(0xFF70E000))
+        }
+
+        // 화약통 연쇄 폭발 & 보급 상자 파괴 획득 체크
+        for (pi in props.indices) {
+            val prop = props[pi]
+            if (!prop.isActive) continue
+            val propCy = prop.y - prop.height * 0.5f
+            val dProp = hypot(x - prop.x, y - propCy)
+            if (dProp <= blastRadius + 14f) {
+                if (prop.type == PropType.TNT_BARREL) {
+                    props[pi] = prop.copy(isActive = false)
+                    triggerTntExplosion(prop, attackerId)
+                } else if (prop.type == PropType.SUPPLY_CRATE) {
+                    props[pi] = prop.copy(isActive = false)
+                    grantSupplyCrateReward(attackerId, prop.x, propCy)
+                }
+            }
         }
 
         var anyTankHit = false
@@ -1111,14 +1357,12 @@ class BattleEngine {
                 }
                 val newHp = max(0, t.hp - dmg)
 
-                // 무기별 특수 부가 효과
                 var updatedX = t.x
                 var updatedFuel = t.fuel
                 var updatedPoison = t.poisonTurns
                 var extraLabel: String? = null
 
                 if (weapon == WeaponType.WATER && !isSubMunition) {
-                    // 물포탄: 넉백 밀림 + 적 연료 50% 감소
                     val pushDir = if (t.x >= x) 1f else -1f
                     val pushedX = (t.x + pushDir * 36f).coerceIn(36f, terrain.worldWidth - 36f)
                     if (terrain.findGroundY(pushedX, t.y, maxStepUp = 22f) != null) {
@@ -1127,7 +1371,6 @@ class BattleEngine {
                     updatedFuel = max(0f, t.fuel - t.maxFuel * 0.5f)
                     extraLabel = if (language == AppLanguage.KO) "미끄덩!" else "Splash!"
                 } else if (weapon == WeaponType.POOP && !isSubMunition) {
-                    // 똥포탄: 2턴 악취 지속 피해
                     updatedPoison = max(updatedPoison, 2)
                     extraLabel = if (language == AppLanguage.KO) "으악 똥!" else "Stinky!"
                 }
@@ -1178,10 +1421,52 @@ class BattleEngine {
         )
     }
 
+    private fun triggerTntExplosion(barrel: BattlePropState, attackerId: Int) {
+        val bx = barrel.x
+        val by = barrel.y - barrel.height * 0.5f
+        spawnPopup(bx, by - 36f, if (language == AppLanguage.KO) "연쇄 폭발! TNT!" else "TNT BOOM!", Color(0xFFFF4D6D))
+        explodeAt(bx, by, WeaponType.POWER, attackerId, isSubMunition = true)
+        terrain.carveCrater(bx, by, 54f)
+        explosions.add(ExplosionEffect(x = bx, y = by, maxRadius = 96f, coreColor = DangerRed))
+        triggerShake(16f, 0.36f)
+    }
+
+    private fun grantSupplyCrateReward(tankId: Int, cx: Float, cy: Float) {
+        val idx = tanks.indexOfFirst { it.id == tankId && it.isAlive }
+        if (idx >= 0) {
+            val t = tanks[idx]
+            val healed = min(t.maxHp, t.hp + 25)
+            tanks[idx] = t.copy(
+                hp = healed,
+                hasShield = true,
+                weaponCooldowns = emptyMap()
+            )
+            spawnPopup(
+                cx,
+                cy - 32f,
+                if (language == AppLanguage.KO) "보급! HP+25 · 방어막 · 쿨초기화" else "Supply! HP+25 · Shield",
+                PrimaryGold
+            )
+            pendingAudioEvents.add(EngineAudioEvent.ItemUse)
+        }
+    }
+
     private fun updateTankPhysicsAndFalling(dt: Float) {
         for (i in tanks.indices) {
             var t = tanks[i]
             if (!t.isAlive) continue
+
+            // 보급 상자 위로 탱크가 지나가면 즉시 획득
+            for (pi in props.indices) {
+                val prop = props[pi]
+                if (prop.isActive && prop.type == PropType.SUPPLY_CRATE) {
+                    if (hypot(t.x - prop.x, (t.y - 16f) - (prop.y - 16f)) <= 36f) {
+                        props[pi] = prop.copy(isActive = false)
+                        grantSupplyCrateReward(t.id, prop.x, prop.y - 20f)
+                        t = tanks[i]
+                    }
+                }
+            }
 
             if (t.recoilOffset > 0f) {
                 t = t.copy(recoilOffset = max(0f, t.recoilOffset - 36f * dt))
@@ -1477,6 +1762,8 @@ class BattleEngine {
             tanks = tanks.toList(),
             projectiles = projectiles.toList(),
             gasClouds = gasClouds.toList(),
+            props = props.toList(),
+            sceneryProps = sceneryProps.toList(),
             explosions = explosions.toList(),
             particles = particles.toList(),
             weatherParticles = weatherParticles.toList(),
@@ -1515,6 +1802,7 @@ class BattleEngine {
         const val TURN_DURATION_SEC = 20f
         const val GRAVITY = 520f
         const val WIND_ACCEL = 18f
+        const val UPDRAFT_LIFT_ACCEL = 740f
         const val MAX_LAUNCH_SPEED = 980f
         const val TANK_MOVE_SPEED = 115f
         const val FUEL_BURN_PER_SEC = 34f

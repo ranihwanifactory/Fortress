@@ -666,11 +666,13 @@ fun TutorialOverlay(
                 TutorialBullet("2. 각도 & 방향", "▲ ▼ 버튼으로 포신 각도(0°~90°)를 맞추고, ⇄ 버튼으로 좌우를 전환합니다.")
                 TutorialBullet("3. 발사 파워 & 바람", "발사 버튼을 길게 눌러 게이지를 채운 뒤 손을 떼세요! 상단 바람 화살표를 참고하세요.")
                 TutorialBullet("4. 전술 아이템 & 지형 파괴", "수리·연료+·방어막 아이템을 전투당 1회씩 사용할 수 있으며, 지형을 부숴 상대를 추락시킬 수 있습니다!")
+                TutorialBullet("5. 지형지물 & 기믹 활용", "중앙 성벽과 부유 발판을 부수고, TNT 화약통(연쇄 폭발)·보급 상자·도탄 범퍼·상승 기류를 전략적으로 활용하세요!")
             } else {
                 TutorialBullet("1. Move & Fuel", "Hold ◀ ▶ on the bottom left to drive across hills. Fuel refills each turn.")
                 TutorialBullet("2. Angle & Facing", "Adjust cannon angle (0°~90°) with ▲ ▼ and flip direction with ⇄.")
                 TutorialBullet("3. Hold to Fire & Wind", "Hold FIRE to charge power and release to shoot! Account for the top wind arrow.")
                 TutorialBullet("4. Tactical Items & Craters", "Use Heal, Fuel+, or Shield once per match. Carve terrain under foes to deal fall damage!")
+                TutorialBullet("5. Battlefield Props & Obstacles", "Destroy the central castle wall and sky bridges! Hit TNT barrels, collect Supply Crates, bounce off Bumpers, and ride Updraft Vents.")
             }
             Spacer(modifier = Modifier.height(12.dp))
             Button(

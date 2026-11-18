@@ -227,6 +227,10 @@ class BattleViewModel(application: Application) : AndroidViewModel(application) 
                         amplitude = if (big) 255 else 185
                     )
                 }
+                EngineAudioEvent.Ricochet -> {
+                    audio.playSfx(SfxType.BOING, volume = 0.88f)
+                    audio.vibrate(40L, 140)
+                }
                 EngineAudioEvent.ItemUse -> {
                     audio.playSfx(SfxType.ITEM_USE)
                     audio.vibrate(35L, 110)

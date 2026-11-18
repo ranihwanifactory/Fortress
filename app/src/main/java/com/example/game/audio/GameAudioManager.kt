@@ -38,6 +38,7 @@ enum class SfxType {
     SPLAT,
     GAS_HISS,
     TRASH_CLATTER,
+    BOING,
     HIT_CLANK,
     ITEM_USE,
     TURN_START,
@@ -111,6 +112,7 @@ class GameAudioManager(context: Context) {
                     SfxType.SPLAT to writeWav(File(cacheDir, "sfx_splat.wav"), synthPoopSplat()),
                     SfxType.GAS_HISS to writeWav(File(cacheDir, "sfx_gas.wav"), synthGasHiss()),
                     SfxType.TRASH_CLATTER to writeWav(File(cacheDir, "sfx_trash.wav"), synthTrashClatter()),
+                    SfxType.BOING to writeWav(File(cacheDir, "sfx_boing.wav"), synthBoing()),
                     SfxType.HIT_CLANK to writeWav(File(cacheDir, "sfx_hit.wav"), synthHitClank()),
                     SfxType.ITEM_USE to writeWav(File(cacheDir, "sfx_item.wav"), synthItemChime()),
                     SfxType.TURN_START to writeWav(File(cacheDir, "sfx_turn.wav"), synthTurnReady()),
@@ -403,6 +405,21 @@ class GameAudioManager(context: Context) {
                 sin(2.0 * PI * 1240.0 * t) * 0.2
             val rattle = (rng.nextDouble() * 2.0 - 1.0) * 0.25
             out[i] = ((metal + rattle) * env * 0.75 * Short.MAX_VALUE).toInt().toShort()
+        }
+        return out
+    }
+
+    private fun synthBoing(): ShortArray {
+        val dur = 0.34
+        val len = (SAMPLE_RATE * dur).toInt()
+        val out = ShortArray(len)
+        var phase = 0.0
+        for (i in 0 until len) {
+            val t = i.toDouble() / SAMPLE_RATE
+            val env = exp(-t * 5.2)
+            val freq = 260.0 + sin(t * 52.0) * 95.0 + t * 480.0
+            phase += 2.0 * PI * freq / SAMPLE_RATE
+            out[i] = (sin(phase) * env * 0.65 * Short.MAX_VALUE).toInt().toShort()
         }
         return out
     }

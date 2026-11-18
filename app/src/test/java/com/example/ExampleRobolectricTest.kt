@@ -7,6 +7,7 @@ import com.example.game.model.Difficulty
 import com.example.game.model.GameMode
 import com.example.game.model.ItemType
 import com.example.game.model.MapTheme
+import com.example.game.model.PropType
 import com.example.game.model.TurnPhase
 import com.example.game.model.WeaponType
 import org.junit.Assert.assertEquals
@@ -29,13 +30,21 @@ class ExampleRobolectricTest {
     }
 
     @Test
-    fun `terrain crater carves solid pixels and special weapons can be selected and fired`() {
+    fun `terrain crater carves solid pixels and special weapons and props spawn properly`() {
         val engine = BattleEngine()
         engine.startNewMatch(GameMode.AI_VS_PLAYER, Difficulty.NORMAL, MapTheme.DESERT)
         val initialHud = engine.buildHudState()
         assertEquals(TurnPhase.PLAYER_AIMING, initialHud.turnPhase)
         assertEquals(MapTheme.DESERT, initialHud.mapTheme)
         assertEquals(20f, initialHud.turnTimeRemaining, 0.01f)
+
+        val snapshot = engine.buildRenderSnapshot()
+        val propTypes = snapshot.props.map { it.type }.toSet()
+        assertTrue(PropType.TNT_BARREL in propTypes)
+        assertTrue(PropType.SUPPLY_CRATE in propTypes)
+        assertTrue(PropType.RICOCHET_BUMPER in propTypes)
+        assertTrue(PropType.UPDRAFT_VENT in propTypes)
+        assertTrue(snapshot.sceneryProps.isNotEmpty())
 
         val tank0 = initialHud.tanks[0]
         val groundY = tank0.y + 8f

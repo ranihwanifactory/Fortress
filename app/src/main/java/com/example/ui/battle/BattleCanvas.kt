@@ -29,9 +29,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.res.ResourcesCompat
 import com.example.R
 import com.example.game.engine.DestructibleTerrain
+import com.example.game.model.BattlePropState
 import com.example.game.model.BattleRenderSnapshot
 import com.example.game.model.MapTheme
 import com.example.game.model.ProjectileState
+import com.example.game.model.PropType
+import com.example.game.model.SceneryKind
+import com.example.game.model.SceneryProp
 import com.example.game.model.TankExpression
 import com.example.game.model.TankState
 import com.example.game.model.TurnPhase
@@ -88,6 +92,14 @@ fun BattleCanvas(
             typeface = juaTypeface
             style = Paint.Style.STROKE
             strokeWidth = 4.5f
+            color = DeepNavyOutline.toArgb()
+        }
+    }
+    val propLabelPaint = remember(juaTypeface) {
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            textAlign = Paint.Align.CENTER
+            textSize = 14f
+            typeface = juaTypeface
             color = DeepNavyOutline.toArgb()
         }
     }
@@ -149,6 +161,27 @@ fun BattleCanvas(
             val rev = snapshot.terrainRevision
             drawIntoCanvas { canvas ->
                 canvas.nativeCanvas.drawBitmap(terrain.bitmap, srcRect, dstRect, null)
+            }
+
+            // 테마별 장식 지형지물 (나무, 선인장, 수정, 야자수, 우주 비콘, 깃발)
+            snapshot.sceneryProps.forEach { scenery ->
+                if (scenery.isAlive) {
+                    drawSceneryProp(scenery, snapshot.animTime)
+                }
+            }
+
+            // 상승 기류 간헐천 바람 기둥 (뒤쪽 레이어)
+            snapshot.props.forEach { prop ->
+                if (prop.isActive && prop.type == PropType.UPDRAFT_VENT) {
+                    drawUpdraftVent(prop, snapshot.animTime)
+                }
+            }
+
+            // 화약통, 보급 상자, 공중 도탄 범퍼
+            snapshot.props.forEach { prop ->
+                if (prop.isActive && prop.type != PropType.UPDRAFT_VENT) {
+                    drawInteractiveProp(prop, snapshot.animTime, propLabelPaint)
+                }
             }
 
             // 탱크 렌더링 (표정·실드·반동 포함)
@@ -770,6 +803,363 @@ private fun DrawScope.drawCustomWeaponProjectile(proj: ProjectileState) {
                 radius = r * 0.45f,
                 center = Offset(center.x - 1.5f, center.y - 1.5f)
             )
+        }
+    }
+}
+
+private fun DrawScope.drawUpdraftVent(prop: BattlePropState, animTime: Float) {
+    val left = prop.x - prop.width * 0.5f
+    val top = prop.y - prop.height
+
+    // 반투명 하늘색 바람 기둥
+    drawRect(
+        brush = Brush.verticalGradient(
+            colors = listOf(
+                Color.Transparent,
+                Color(0x2890E0EF),
+                Color(0x44CAF0F8)
+            ),
+            startY = top,
+            endY = prop.y
+        ),
+        topLeft = Offset(left, top),
+        size = Size(prop.width, prop.height)
+    )
+
+    // 상승하는 바람 줄무늬 애니메이션
+    for (i in 0 until 4) {
+        val cycle = ((animTime * 0.85f + i * 0.25f) % 1f)
+        val ribbonY = prop.y - 18f - cycle * (prop.height - 32f)
+        val laneX = prop.x + (-18f + i * 12f) + sin(animTime * 4f + i) * 5f
+        val alpha = (1f - cycle).coerceIn(0f, 1f) * 0.78f
+        drawLine(
+            color = Color.White.copy(alpha = alpha),
+            start = Offset(laneX, ribbonY + 26f),
+            end = Offset(laneX, ribbonY),
+            strokeWidth = 3.5f,
+            cap = StrokeCap.Round
+        )
+    }
+
+    // 지면 간헐천 분출구 노즐
+    drawRoundRect(
+        color = DeepNavyOutline,
+        topLeft = Offset(prop.x - 28f, prop.y - 14f),
+        size = Size(56f, 16f),
+        cornerRadius = CornerRadius(6f, 6f)
+    )
+    drawRoundRect(
+        color = Color(0xFF48CAE4),
+        topLeft = Offset(prop.x - 24f, prop.y - 11f),
+        size = Size(48f, 10f),
+        cornerRadius = CornerRadius(4f, 4f)
+    )
+}
+
+private fun DrawScope.drawInteractiveProp(
+    prop: BattlePropState,
+    animTime: Float,
+    propLabelPaint: Paint
+) {
+    when (prop.type) {
+        PropType.TNT_BARREL -> {
+            val w = prop.width
+            val h = prop.height
+            val left = prop.x - w * 0.5f
+            val top = prop.y - h
+
+            // 붉은 TNT 화약통 외곽 & 본체
+            drawRoundRect(
+                color = DeepNavyOutline,
+                topLeft = Offset(left - 2.5f, top - 2.5f),
+                size = Size(w + 5f, h + 5f),
+                cornerRadius = CornerRadius(9f, 9f)
+            )
+            drawRoundRect(
+                color = Color(0xFFE63946),
+                topLeft = Offset(left, top),
+                size = Size(w, h),
+                cornerRadius = CornerRadius(7f, 7f)
+            )
+            // 노란 중앙 경고 밴드 + 상하 철제 띠
+            drawRect(
+                color = Color(0xFF495057),
+                topLeft = Offset(left, top + 5f),
+                size = Size(w, 5f)
+            )
+            drawRect(
+                color = Color(0xFF495057),
+                topLeft = Offset(left, prop.y - 10f),
+                size = Size(w, 5f)
+            )
+            drawRect(
+                color = PrimaryGold,
+                topLeft = Offset(left + 2f, top + h * 0.34f),
+                size = Size(w - 4f, h * 0.32f)
+            )
+            drawIntoCanvas { canvas ->
+                canvas.nativeCanvas.drawText("TNT", prop.x, top + h * 0.58f, propLabelPaint)
+            }
+        }
+
+        PropType.SUPPLY_CRATE -> {
+            val w = prop.width
+            val h = prop.height
+            val left = prop.x - w * 0.5f
+            val top = prop.y - h
+
+            // 금색 나무 보급 상자 + 대각선 보강대 + 회복/연료 십자 마크
+            drawRoundRect(
+                color = DeepNavyOutline,
+                topLeft = Offset(left - 2.5f, top - 2.5f),
+                size = Size(w + 5f, h + 5f),
+                cornerRadius = CornerRadius(7f, 7f)
+            )
+            drawRoundRect(
+                color = Color(0xFFF4A261),
+                topLeft = Offset(left, top),
+                size = Size(w, h),
+                cornerRadius = CornerRadius(5f, 5f)
+            )
+            drawRoundRect(
+                color = Color(0xFFFFD166),
+                topLeft = Offset(left + 4f, top + 4f),
+                size = Size(w - 8f, h - 8f),
+                cornerRadius = CornerRadius(3f, 3f)
+            )
+            drawLine(
+                color = Color(0xFFBC6C25),
+                start = Offset(left + 4f, top + 4f),
+                end = Offset(left + w - 4f, top + h - 4f),
+                strokeWidth = 3f
+            )
+            // 중앙 초록 십자 배지
+            val cx = prop.x
+            val cy = top + h * 0.5f
+            drawCircle(color = DeepNavyOutline, radius = 10.5f, center = Offset(cx, cy))
+            drawCircle(color = SuccessGreen, radius = 8.5f, center = Offset(cx, cy))
+            drawLine(
+                color = Color.White,
+                start = Offset(cx - 4.5f, cy),
+                end = Offset(cx + 4.5f, cy),
+                strokeWidth = 3.2f,
+                cap = StrokeCap.Round
+            )
+            drawLine(
+                color = Color.White,
+                start = Offset(cx, cy - 4.5f),
+                end = Offset(cx, cy + 4.5f),
+                strokeWidth = 3.2f,
+                cap = StrokeCap.Round
+            )
+        }
+
+        PropType.RICOCHET_BUMPER -> {
+            val pulseScale = if (prop.bounceAnimTimer > 0f) {
+                1f + sin((prop.bounceAnimTimer / 0.35f) * PI.toFloat()) * 0.34f
+            } else {
+                1f + sin(animTime * 3.5f + prop.id) * 0.06f
+            }
+            val r = prop.radius * pulseScale
+            val center = Offset(prop.x, prop.y)
+
+            // 외곽 에너지 글로우 + 핑볼 범퍼 링
+            drawCircle(color = Color(0x444CC9F0), radius = r * 1.32f, center = center)
+            drawCircle(color = DeepNavyOutline, radius = r + 3f, center = center)
+            drawCircle(color = Color(0xFF4CC9F0), radius = r, center = center)
+            drawCircle(color = Color(0xFFFF4D6D), radius = r * 0.72f, center = center)
+            drawStarburst(
+                center = center,
+                outerRadius = r * 0.52f,
+                innerRadius = r * 0.25f,
+                points = 5,
+                color = PrimaryGold
+            )
+        }
+
+        PropType.UPDRAFT_VENT -> Unit
+    }
+}
+
+private fun DrawScope.drawSceneryProp(scenery: SceneryProp, animTime: Float) {
+    val s = scenery.scale
+    val x = scenery.x
+    val y = scenery.y
+    val sway = sin(animTime * 1.8f + scenery.id) * 2.2f * s
+
+    when (scenery.kind) {
+        SceneryKind.OAK_TREE -> {
+            // 둥근 잎의 카툰 참나무
+            drawLine(
+                color = DeepNavyOutline,
+                start = Offset(x, y),
+                end = Offset(x + sway * 0.3f, y - 34f * s),
+                strokeWidth = 11f * s,
+                cap = StrokeCap.Round
+            )
+            drawLine(
+                color = Color(0xFF8D5524),
+                start = Offset(x, y),
+                end = Offset(x + sway * 0.3f, y - 34f * s),
+                strokeWidth = 6.5f * s,
+                cap = StrokeCap.Round
+            )
+            val crown = Offset(x + sway, y - 44f * s)
+            drawCircle(color = DeepNavyOutline, radius = 21f * s, center = crown)
+            drawCircle(color = DeepNavyOutline, radius = 15f * s, center = Offset(crown.x - 13f * s, crown.y + 6f * s))
+            drawCircle(color = DeepNavyOutline, radius = 15f * s, center = Offset(crown.x + 13f * s, crown.y + 6f * s))
+            drawCircle(color = Color(0xFF40916C), radius = 13f * s, center = Offset(crown.x - 13f * s, crown.y + 6f * s))
+            drawCircle(color = Color(0xFF40916C), radius = 13f * s, center = Offset(crown.x + 13f * s, crown.y + 6f * s))
+            drawCircle(color = Color(0xFF52B788), radius = 18.5f * s, center = crown)
+        }
+
+        SceneryKind.PINE_TREE -> {
+            // 설원 맵 눈 덮인 침엽수
+            drawLine(
+                color = DeepNavyOutline,
+                start = Offset(x, y),
+                end = Offset(x, y - 22f * s),
+                strokeWidth = 9f * s,
+                cap = StrokeCap.Round
+            )
+            listOf(0f to 28f, 16f to 22f, 30f to 16f).forEachIndexed { tier, (dy, halfW) ->
+                val tipY = y - (36f + dy) * s
+                val baseY = y - (14f + dy) * s
+                val tri = Path().apply {
+                    moveTo(x + sway * (0.4f + tier * 0.25f), tipY)
+                    lineTo(x - halfW * s, baseY)
+                    lineTo(x + halfW * s, baseY)
+                    close()
+                }
+                drawPath(tri, color = if (tier == 2) Color(0xFFEAF6FF) else Color(0xFF2D6A4F))
+                drawPath(tri, color = DeepNavyOutline, style = Stroke(width = 2.4f))
+            }
+        }
+
+        SceneryKind.CACTUS -> {
+            // 사막 선인장
+            val topY = y - 46f * s
+            drawLine(
+                color = DeepNavyOutline,
+                start = Offset(x, y),
+                end = Offset(x, topY),
+                strokeWidth = 14f * s,
+                cap = StrokeCap.Round
+            )
+            drawLine(
+                color = Color(0xFF52B788),
+                start = Offset(x, y),
+                end = Offset(x, topY),
+                strokeWidth = 9.5f * s,
+                cap = StrokeCap.Round
+            )
+            // 좌/우 팔
+            drawLine(
+                color = DeepNavyOutline,
+                start = Offset(x - 2f, y - 22f * s),
+                end = Offset(x - 14f * s, y - 26f * s),
+                strokeWidth = 10f * s,
+                cap = StrokeCap.Round
+            )
+            drawLine(
+                color = DeepNavyOutline,
+                start = Offset(x - 14f * s, y - 26f * s),
+                end = Offset(x - 14f * s, y - 38f * s),
+                strokeWidth = 10f * s,
+                cap = StrokeCap.Round
+            )
+            drawLine(
+                color = Color(0xFF52B788),
+                start = Offset(x - 2f, y - 22f * s),
+                end = Offset(x - 14f * s, y - 26f * s),
+                strokeWidth = 6f * s,
+                cap = StrokeCap.Round
+            )
+            drawLine(
+                color = Color(0xFF52B788),
+                start = Offset(x - 14f * s, y - 26f * s),
+                end = Offset(x - 14f * s, y - 38f * s),
+                strokeWidth = 6f * s,
+                cap = StrokeCap.Round
+            )
+        }
+
+        SceneryKind.PALM_TREE -> {
+            // 바다 섬 야자수
+            val trunkTop = Offset(x + 9f * s + sway, y - 52f * s)
+            drawLine(
+                color = DeepNavyOutline,
+                start = Offset(x, y),
+                end = trunkTop,
+                strokeWidth = 10.5f * s,
+                cap = StrokeCap.Round
+            )
+            drawLine(
+                color = Color(0xFFB07D4F),
+                start = Offset(x, y),
+                end = trunkTop,
+                strokeWidth = 6.5f * s,
+                cap = StrokeCap.Round
+            )
+            listOf(-155f, -35f, 15f, 145f).forEach { deg ->
+                val rad = Math.toRadians(deg.toDouble()).toFloat()
+                val leafEnd = Offset(trunkTop.x + cos(rad) * 24f * s, trunkTop.y + sin(rad) * 18f * s + 6f)
+                drawLine(
+                    color = DeepNavyOutline,
+                    start = trunkTop,
+                    end = leafEnd,
+                    strokeWidth = 9f * s,
+                    cap = StrokeCap.Round
+                )
+                drawLine(
+                    color = Color(0xFF40916C),
+                    start = trunkTop,
+                    end = leafEnd,
+                    strokeWidth = 5.5f * s,
+                    cap = StrokeCap.Round
+                )
+            }
+        }
+
+        SceneryKind.CRYSTAL -> {
+            // 화산/우주 빛나는 결정체
+            val crystalPath = Path().apply {
+                moveTo(x, y - 42f * s)
+                lineTo(x - 12f * s, y - 16f * s)
+                lineTo(x - 8f * s, y)
+                lineTo(x + 8f * s, y)
+                lineTo(x + 12f * s, y - 16f * s)
+                close()
+            }
+            drawPath(crystalPath, color = Color(0xFFFF6D00))
+            drawPath(crystalPath, color = DeepNavyOutline, style = Stroke(width = 2.6f))
+            drawCircle(color = Color(0xFFFFE066), radius = 3.5f * s, center = Offset(x - 2f, y - 24f * s))
+        }
+
+        SceneryKind.SPACE_BEACON -> {
+            // 우주 기지 레이더 비콘
+            val top = Offset(x, y - 44f * s)
+            drawLine(color = DeepNavyOutline, start = Offset(x, y), end = top, strokeWidth = 7.5f * s)
+            drawLine(color = Color(0xFFADB5BD), start = Offset(x, y), end = top, strokeWidth = 4f * s)
+            val blink = 0.55f + 0.45f * sin(animTime * 5f + scenery.id)
+            drawCircle(color = Color(0xFF9BF6FF).copy(alpha = blink * 0.5f), radius = 11f * s, center = top)
+            drawCircle(color = Color(0xFF00F5D4), radius = 5.5f * s, center = top)
+        }
+
+        SceneryKind.BATTLE_FLAG -> {
+            // 바람 방향/세기를 반영해 펄럭이는 요새 깃발
+            val poleTop = Offset(x, y - 50f * s)
+            drawLine(color = DeepNavyOutline, start = Offset(x, y), end = poleTop, strokeWidth = 6.5f * s)
+            drawLine(color = Color(0xFFE9ECEF), start = Offset(x, y), end = poleTop, strokeWidth = 3.2f * s)
+            val wave = sin(animTime * 6f + scenery.id) * 4f
+            val flagPath = Path().apply {
+                moveTo(poleTop.x, poleTop.y + 2f)
+                lineTo(poleTop.x + 26f * s, poleTop.y + 8f * s + wave)
+                lineTo(poleTop.x, poleTop.y + 20f * s)
+                close()
+            }
+            drawPath(flagPath, color = DangerRed)
+            drawPath(flagPath, color = DeepNavyOutline, style = Stroke(width = 2.2f))
         }
     }
 }
