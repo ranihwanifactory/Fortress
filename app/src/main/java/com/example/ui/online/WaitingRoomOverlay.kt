@@ -53,12 +53,21 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.material.icons.rounded.Swipe
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import com.example.firebase.MatchRoom
 import com.example.firebase.OnlineUiState
 import com.example.firebase.PlayerProfile
 import com.example.game.model.AppLanguage
 import com.example.game.model.MapTheme
 import com.example.game.model.TankType
+import com.example.ui.battle.previewDrawableRes
+import com.example.ui.components.CartoonActionButton
+import com.example.ui.components.CartoonStrokeText
 import com.example.ui.tank.TankAvatar
 import com.example.ui.theme.DeepNavyOutline
 import com.example.ui.theme.EnemyCoral
@@ -78,7 +87,7 @@ fun WaitingRoomOverlay(
     leaderboardState: OnlineUiState<List<PlayerProfile>>,
     isBusy: Boolean,
     statusMessage: String?,
-    onChangeMap: (MapTheme) -> Unit,
+    onOpenMapSelector: () -> Unit,
     onToggleReady: () -> Unit,
     onStartMatch: () -> Unit,
     onInvitePlayer: (PlayerProfile) -> Unit,
@@ -165,8 +174,8 @@ fun WaitingRoomOverlay(
                         )
                     }
 
-                    // 시스템 공유 시트
-                    Button(
+                    // 시스템 공유 3D 카툰 버튼
+                    CartoonActionButton(
                         onClick = {
                             val shareText = if (isKo) {
                                 "[캐논 대전] 1:1 온라인 대포 대전에 초대합니다! 대기실 초대 코드: ${room.roomCode}"
@@ -179,23 +188,42 @@ fun WaitingRoomOverlay(
                             }
                             context.startActivity(Intent.createChooser(intent, if (isKo) "친구 초대 공유" else "Share Invite"))
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = PlayerBlue),
-                        shape = RoundedCornerShape(12.dp),
+                        topColor = Color(0xFF56CCF2),
+                        bottomColor = PlayerBlue,
+                        lipColor = Color(0xFF0A4D7C),
+                        cornerRadius = 13.dp,
+                        depth = 3.5.dp,
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
                         modifier = Modifier.height(48.dp).testTag("share_room_code_button")
                     ) {
-                        Icon(Icons.Rounded.Share, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Icon(Icons.Rounded.Share, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text(if (isKo) "공유" else "Share", style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            text = if (isKo) "공유" else "Share",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color.White
+                        )
                     }
 
-                    OutlinedButton(
+                    CartoonActionButton(
                         onClick = onLeaveRoom,
-                        shape = RoundedCornerShape(12.dp),
+                        topColor = Color(0xFF3E5C76),
+                        bottomColor = Color(0xFF23395B),
+                        lipColor = Color(0xFF101D30),
+                        cornerRadius = 13.dp,
+                        depth = 3.5.dp,
+                        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
                         modifier = Modifier.height(48.dp).testTag("leave_room_button")
                     ) {
-                        Icon(Icons.AutoMirrored.Rounded.ExitToApp, contentDescription = null, tint = Color.White)
+                        Icon(Icons.AutoMirrored.Rounded.ExitToApp, contentDescription = null, tint = Color.White, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text(if (isKo) "나가기" else "Leave", color = Color.White, style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            text = if (isKo) "나가기" else "Leave",
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.titleMedium
+                        )
                     }
                 }
             }
@@ -314,69 +342,129 @@ fun WaitingRoomOverlay(
                 }
             }
 
-            // 하단 컨트롤: 맵 선택(방장) + 시작/준비 버튼
+            // 하단 컨트롤: 현재 전장 풀컬러 미리보기 카드 (방장은 터치하여 전체화면 슬라이드 맵 선택!) + 3D 시작/준비 버튼
+            val currentMap = room.parsedMapTheme()
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                if (isHost) {
+                // 전장 맵 풀컬러 썸네일 카드
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(54.dp)
+                        .clip(RoundedCornerShape(15.dp))
+                        .border(
+                            width = 2.5.dp,
+                            color = if (isHost) PrimaryGold else PlayerBlue,
+                            shape = RoundedCornerShape(15.dp)
+                        )
+                        .let { mod ->
+                            if (isHost) mod.clickable { onOpenMapSelector() } else mod
+                        }
+                        .testTag("waiting_room_map_selector_button")
+                ) {
+                    Image(
+                        painter = painterResource(id = currentMap.previewDrawableRes()),
+                        contentDescription = currentMap.label(language),
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(
+                                Brush.horizontalGradient(
+                                    colors = listOf(Color(0xDD0B172A), Color(0x880B172A), Color(0x550B172A))
+                                )
+                            )
+                    )
                     Row(
                         modifier = Modifier
-                            .weight(1f)
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            .fillMaxSize()
+                            .padding(horizontal = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        MapTheme.entries.forEach { map ->
-                            val selected = room.parsedMapTheme() == map
-                            Box(
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = if (isKo) "전장 맵" else "BATTLEFIELD",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color(0xFF90E0EF)
+                            )
+                            CartoonStrokeText(
+                                text = currentMap.label(language),
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
+                                color = PrimaryGold,
+                                shadowOffset = 1.5.dp
+                            )
+                        }
+                        if (isHost) {
+                            Row(
                                 modifier = Modifier
-                                    .height(44.dp)
                                     .clip(RoundedCornerShape(10.dp))
-                                    .background(if (selected) PrimaryGold else Color(0xFF1F3554))
-                                    .clickable { onChangeMap(map) }
-                                    .padding(horizontal = 10.dp),
-                                contentAlignment = Alignment.Center
+                                    .background(PrimaryGold)
+                                    .border(1.8.dp, DeepNavyOutline, RoundedCornerShape(10.dp))
+                                    .padding(horizontal = 9.dp, vertical = 4.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
+                                Icon(
+                                    imageVector = Icons.Rounded.Swipe,
+                                    contentDescription = null,
+                                    tint = DeepNavyOutline,
+                                    modifier = Modifier.size(15.dp)
+                                )
                                 Text(
-                                    text = map.label(language),
+                                    text = if (isKo) "슬라이드 변경" else "Slide Maps",
                                     style = MaterialTheme.typography.labelMedium,
-                                    color = if (selected) DeepNavyOutline else Color.White
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = DeepNavyOutline
                                 )
                             }
+                        } else {
+                            Text(
+                                text = if (isKo) "방장 시작 대기" else "Host starts",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color.White
+                            )
                         }
                     }
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Button(
+                }
+
+                if (isHost) {
+                    CartoonActionButton(
                         onClick = onStartMatch,
                         enabled = hasGuest && !isBusy,
-                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryGoldDark),
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier.height(50.dp).testTag("start_online_match_button")
+                        topColor = Color(0xFFFFB703),
+                        bottomColor = PrimaryGoldDark,
+                        lipColor = Color(0xFF9A4400),
+                        cornerRadius = 15.dp,
+                        depth = 4.5.dp,
+                        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 6.dp),
+                        modifier = Modifier.height(54.dp).testTag("start_online_match_button")
                     ) {
-                        Icon(Icons.Rounded.PlayArrow, contentDescription = null, tint = Color.White)
+                        Icon(Icons.Rounded.PlayArrow, contentDescription = null, tint = Color.White, modifier = Modifier.size(22.dp))
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text(
+                        CartoonStrokeText(
                             text = if (isKo) "온라인 대전 시작!" else "Start Battle!",
-                            style = MaterialTheme.typography.titleLarge,
-                            color = Color.White
+                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.ExtraBold),
+                            color = Color.White,
+                            shadowOffset = 1.5.dp
                         )
                     }
                 } else {
-                    Text(
-                        text = if (isKo) "방장이 대전을 시작할 때까지 기다려 주세요." else "Waiting for host to start…",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = Color(0xFF90E0EF),
-                        modifier = Modifier.weight(1f)
-                    )
-                    Button(
+                    CartoonActionButton(
                         onClick = onToggleReady,
                         enabled = !isBusy,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = if (room.guestReady) Color(0xFF495057) else SuccessGreen
-                        ),
-                        shape = RoundedCornerShape(14.dp),
-                        modifier = Modifier.height(50.dp).testTag("toggle_ready_button")
+                        topColor = if (room.guestReady) Color(0xFF6C757D) else Color(0xFF70F8BA),
+                        bottomColor = if (room.guestReady) Color(0xFF495057) else SuccessGreen,
+                        lipColor = if (room.guestReady) Color(0xFF2B3035) else Color(0xFF007A4D),
+                        cornerRadius = 15.dp,
+                        depth = 4.5.dp,
+                        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 6.dp),
+                        modifier = Modifier.height(54.dp).testTag("toggle_ready_button")
                     ) {
                         Icon(
                             imageVector = Icons.Rounded.CheckCircle,
@@ -391,6 +479,7 @@ fun WaitingRoomOverlay(
                                 if (isKo) "준비 완료!" else "Ready!"
                             },
                             style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.ExtraBold,
                             color = if (room.guestReady) Color.White else DeepNavyOutline
                         )
                     }

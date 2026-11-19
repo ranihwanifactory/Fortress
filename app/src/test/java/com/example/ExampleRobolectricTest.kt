@@ -17,20 +17,35 @@ import com.example.game.model.PropType
 import com.example.game.model.TankType
 import com.example.game.model.TurnPhase
 import com.example.game.model.WeaponType
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertWidthIsAtLeast
+import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.unit.dp
 import com.example.notifications.InviteNotificationManager
+import com.example.ui.battle.MapSelectCarouselOverlay
+import com.example.ui.battle.description
+import com.example.ui.battle.featureTags
+import com.example.ui.battle.previewDrawableRes
 import com.example.ui.online.renderRankingSnapshotBitmap
+import com.example.ui.theme.CannonBattleTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [36])
+@Config(sdk = [36], qualifiers = "w800dp-h360dp-land-xhdpi")
 class ExampleRobolectricTest {
+
+    @get:Rule
+    val composeTestRule = createComposeRule()
 
     @Test
     fun `read string from context`() {
@@ -302,5 +317,55 @@ class ExampleRobolectricTest {
         // Should not throw even when runtime permission is not granted in test environment
         InviteNotificationManager.showInviteNotification(context, invite, AppLanguage.KO)
         InviteNotificationManager.cancelInviteNotification(context, invite.id)
+    }
+
+    @Test
+    fun `every map theme resolves a unique full-screen preview drawable and carousel metadata`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val drawableIds = MapTheme.entries.map { it.previewDrawableRes() }
+        assertEquals(6, MapTheme.entries.size)
+        assertEquals(6, drawableIds.toSet().size)
+
+        MapTheme.entries.forEach { map ->
+            val resId = map.previewDrawableRes()
+            assertTrue(resId != 0)
+            assertNotNull(context.resources.getResourceEntryName(resId))
+            assertTrue(map.description(AppLanguage.KO).isNotBlank())
+            assertTrue(map.description(AppLanguage.EN).isNotBlank())
+            assertTrue(map.featureTags(AppLanguage.KO).size >= 3)
+            assertTrue(map.featureTags(AppLanguage.EN).size >= 3)
+        }
+    }
+
+    @Test
+    fun `map select carousel displays non-zero cartoon start and back buttons and launches game on click`() {
+        var confirmedMap: MapTheme? = null
+        composeTestRule.setContent {
+            CannonBattleTheme {
+                MapSelectCarouselOverlay(
+                    initialMap = MapTheme.DESERT,
+                    selectedTank = TankType.MEGA_TITAN,
+                    modeLabel = "AI 대전 · 보통",
+                    confirmLabel = "게임 시작!",
+                    isBattleLaunch = true,
+                    language = AppLanguage.KO,
+                    onMapFocused = {},
+                    onConfirmMap = { confirmedMap = it },
+                    onDismiss = {}
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithTag("map_select_back_button")
+            .assertIsDisplayed()
+            .assertWidthIsAtLeast(48.dp)
+
+        composeTestRule.onNodeWithTag("confirm_map_and_start_button")
+            .assertIsDisplayed()
+            .assertWidthIsAtLeast(150.dp)
+            .performClick()
+
+        composeTestRule.waitForIdle()
+        assertEquals(MapTheme.DESERT, confirmedMap)
     }
 }

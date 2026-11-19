@@ -90,6 +90,15 @@ import com.example.game.model.Difficulty
 import com.example.game.model.GameMode
 import com.example.game.model.MapTheme
 import com.example.game.model.TankType
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.material.icons.rounded.Map
+import androidx.compose.material.icons.rounded.Swipe
+import com.example.ui.components.CartoonActionButton
+import com.example.ui.components.CartoonGlossyBar
+import com.example.ui.components.CartoonIconButton
+import com.example.ui.components.CartoonPillChip
+import com.example.ui.components.CartoonStrokeText
 import com.example.ui.tank.TankAvatar
 import com.example.ui.theme.DangerRed
 import com.example.ui.theme.DeepNavyOutline
@@ -119,7 +128,7 @@ fun TitleOverlay(
     profile: PlayerProfile?,
     pendingInviteCount: Int,
     onSelectDifficulty: (Difficulty) -> Unit,
-    onSelectMap: (MapTheme) -> Unit,
+    onOpenMapPreview: () -> Unit,
     onOpenTankSelector: () -> Unit,
     onStartAiMatch: () -> Unit,
     onStartLocalMatch: () -> Unit,
@@ -321,12 +330,15 @@ fun TitleOverlay(
                                 )
                             }
                         }
-                        IconButton(
+                        CartoonIconButton(
                             onClick = onSignOut,
+                            topColor = Color(0xFF456990),
+                            bottomColor = Color(0xFF23395B),
+                            lipColor = Color(0xFF132238),
+                            shape = RoundedCornerShape(11.dp),
+                            depth = 3.dp,
                             modifier = Modifier
                                 .size(38.dp)
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(Color(0xFF23395B))
                                 .testTag("sign_out_button")
                         ) {
                             Icon(
@@ -443,12 +455,15 @@ fun TitleOverlay(
                             overflow = TextOverflow.Ellipsis
                         )
                     }
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(PrimaryGold)
-                            .border(1.5.dp, DeepNavyOutline, RoundedCornerShape(10.dp))
-                            .padding(horizontal = 9.dp, vertical = 6.dp)
+                    CartoonActionButton(
+                        onClick = onOpenTankSelector,
+                        topColor = Color(0xFFFFE566),
+                        bottomColor = PrimaryGold,
+                        lipColor = Color(0xFFB37400),
+                        cornerRadius = 11.dp,
+                        depth = 3.dp,
+                        contentPadding = PaddingValues(horizontal = 9.dp, vertical = 4.dp),
+                        modifier = Modifier.height(34.dp)
                     ) {
                         Text(
                             text = if (isKo) "탱크 변경" else "Tanks",
@@ -479,144 +494,203 @@ fun TitleOverlay(
                 }
             }
 
-            // 우측: 맵 6종 선택 + 난이도 + 플레이 버튼 카드
+            // 우측: 카툰 게임 출격 컨트롤 보드 (전장 슬라이드 프리뷰 + 난이도 + 3D 아케이드 플레이 버튼)
             Column(
                 modifier = Modifier
                     .weight(1.12f)
-                    .widthIn(max = 460.dp)
+                    .widthIn(max = 468.dp)
                     .clip(RoundedCornerShape(26.dp))
-                    .background(HudSurfaceDark)
-                    .border(3.dp, Color.White, RoundedCornerShape(26.dp))
-                    .padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(Color(0xEE182E4D), Color(0xF20D1B2A))
+                        )
+                    )
+                    .border(3.dp, PrimaryGold, RoundedCornerShape(26.dp))
+                    .padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(9.dp)
             ) {
-                // 상단: 타이틀 & 설정 아이콘 버튼
+                // 상단: 출격 전장 헤더 & 3D 설정 아이콘 버튼
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = if (isKo) "전장 맵 선택 (6종)" else "Select Battlefield (6)",
-                        style = MaterialTheme.typography.titleMedium,
-                        color = PrimaryGold
-                    )
-                    IconButton(
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Rounded.Map,
+                            contentDescription = null,
+                            tint = PrimaryGold,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        CartoonStrokeText(
+                            text = if (isKo) "전투 출격 본부" else "BATTLE HQ",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
+                            color = PrimaryGold,
+                            shadowOffset = 1.5.dp
+                        )
+                    }
+                    CartoonIconButton(
                         onClick = onOpenSettings,
+                        topColor = Color(0xFF4B7BEC),
+                        bottomColor = Color(0xFF2B4F81),
+                        lipColor = Color(0xFF162C4E),
+                        shape = RoundedCornerShape(13.dp),
+                        depth = 3.5.dp,
                         modifier = Modifier
-                            .size(48.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(Color(0xFF23395B))
-                            .border(2.dp, DeepNavyOutline, RoundedCornerShape(12.dp))
+                            .size(46.dp)
                             .testTag("settings_button")
                     ) {
                         Icon(
                             imageVector = Icons.Rounded.Settings,
                             contentDescription = if (isKo) "설정" else "Settings",
-                            tint = Color.White
+                            tint = Color.White,
+                            modifier = Modifier.size(22.dp)
                         )
                     }
                 }
 
-                // 6종 맵 가로 스크롤 선택기
-                Row(
+                // 현재 전장 풀컬러 카툰 썸네일 카드 (터치하거나 게임 시작 시 전체화면 슬라이드 맵 선택 실행)
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        .height(64.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .border(2.5.dp, PrimaryGold, RoundedCornerShape(16.dp))
+                        .clickable { onOpenMapPreview() }
+                        .testTag("title_map_preview_banner")
                 ) {
-                    MapTheme.entries.forEach { map ->
-                        val selected = map == selectedMap
-                        Box(
-                            modifier = Modifier
-                                .height(48.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(if (selected) PrimaryGold else Color(0xFF23395B))
-                                .border(
-                                    width = 2.dp,
-                                    color = if (selected) Color.White else DeepNavyOutline,
-                                    shape = RoundedCornerShape(12.dp)
+                    Image(
+                        painter = painterResource(id = selectedMap.previewDrawableRes()),
+                        contentDescription = selectedMap.label(language),
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(
+                                Brush.horizontalGradient(
+                                    colors = listOf(
+                                        Color(0xDD0B172A),
+                                        Color(0x880B172A),
+                                        Color(0x440B172A)
+                                    )
                                 )
-                                .clickable { onSelectMap(map) }
-                                .padding(horizontal = 10.dp)
-                                .testTag("map_${map.name.lowercase()}"),
-                            contentAlignment = Alignment.Center
+                            )
+                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(1.dp)
                         ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(5.dp)
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(12.dp)
-                                        .clip(CircleShape)
-                                        .background(map.skyTop)
-                                        .border(1.5.dp, DeepNavyOutline, CircleShape)
-                                )
-                                Text(
-                                    text = map.label(language),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = if (selected) DeepNavyOutline else Color.White
-                                )
-                            }
+                            Text(
+                                text = if (isKo) "현재 전장 · 6종 슬라이드 지원" else "BATTLEFIELD · 6 MAPS",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = Color(0xFF90E0EF),
+                                maxLines = 1
+                            )
+                            CartoonStrokeText(
+                                text = selectedMap.label(language),
+                                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
+                                color = PrimaryGold,
+                                shadowOffset = 1.5.dp
+                            )
+                        }
+                        Row(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(Color(0xDD11243E))
+                                .border(1.8.dp, Color.White.copy(alpha = 0.85f), RoundedCornerShape(12.dp))
+                                .padding(horizontal = 9.dp, vertical = 5.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Rounded.Swipe,
+                                contentDescription = null,
+                                tint = PrimaryGold,
+                                modifier = Modifier.size(15.dp)
+                            )
+                            Text(
+                                text = if (isKo) "출격 시 맵 선택" else "Slide on Play",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White,
+                                maxLines = 1
+                            )
                         }
                     }
                 }
 
-                // AI 난이도 선택
+                // AI 난이도 선택 (카툰 3D 알약 칩)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     Difficulty.entries.forEach { diff ->
                         val selected = diff == selectedDifficulty
-                        Box(
+                        CartoonPillChip(
+                            selected = selected,
+                            onClick = { onSelectDifficulty(diff) },
+                            selectedTopColor = Color(0xFF70F8BA),
+                            selectedBottomColor = SuccessGreen,
+                            selectedLipColor = Color(0xFF007A4D),
+                            cornerRadius = 13.dp,
+                            depth = 3.5.dp,
                             modifier = Modifier
                                 .weight(1f)
                                 .height(44.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(if (selected) SuccessGreen else Color(0xFF23395B))
-                                .border(
-                                    width = 2.dp,
-                                    color = if (selected) Color.White else DeepNavyOutline,
-                                    shape = RoundedCornerShape(12.dp)
-                                )
-                                .clickable { onSelectDifficulty(diff) }
-                                .testTag("difficulty_${diff.name.lowercase()}"),
-                            contentAlignment = Alignment.Center
+                                .testTag("difficulty_${diff.name.lowercase()}")
                         ) {
                             Text(
                                 text = diff.label(language),
                                 style = MaterialTheme.typography.titleMedium,
-                                color = if (selected) DeepNavyOutline else Color.White
+                                fontWeight = FontWeight.ExtraBold,
+                                color = if (selected) DeepNavyOutline else Color.White,
+                                maxLines = 1
                             )
                         }
                     }
                 }
 
-                // 온라인 멀티 대기실 & 랭킹 버튼 (핵심 멀티플레이 진입점)
+                // 온라인 멀티 대기실 & 랭킹 3D 카툰 버튼
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Button(
+                    CartoonActionButton(
                         onClick = onOpenOnlineLobby,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = SuccessGreen,
-                            contentColor = DeepNavyOutline
-                        ),
-                        shape = RoundedCornerShape(15.dp),
+                        topColor = Color(0xFF6EF5B5),
+                        bottomColor = SuccessGreen,
+                        lipColor = Color(0xFF007F52),
+                        cornerRadius = 16.dp,
+                        depth = 4.5.dp,
                         modifier = Modifier
-                            .weight(1.3f)
-                            .height(50.dp)
-                            .border(2.5.dp, DeepNavyOutline, RoundedCornerShape(15.dp))
+                            .weight(1.32f)
+                            .height(52.dp)
                             .testTag("open_online_lobby_button")
                     ) {
-                        Icon(Icons.Rounded.Public, contentDescription = null)
+                        Icon(
+                            imageVector = Icons.Rounded.Public,
+                            contentDescription = null,
+                            tint = DeepNavyOutline,
+                            modifier = Modifier.size(20.dp)
+                        )
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             text = if (isKo) "온라인 멀티 대전" else "Online PvP",
                             style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = DeepNavyOutline,
                             maxLines = 1
                         )
                         if (pendingInviteCount > 0) {
@@ -625,6 +699,7 @@ fun TitleOverlay(
                                 modifier = Modifier
                                     .clip(CircleShape)
                                     .background(DangerRed)
+                                    .border(1.5.dp, Color.White, CircleShape)
                                     .padding(horizontal = 6.dp, vertical = 1.dp)
                             ) {
                                 Text(
@@ -638,89 +713,119 @@ fun TitleOverlay(
                         }
                     }
 
-                    Button(
+                    CartoonActionButton(
                         onClick = onOpenRankings,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = Color(0xFF7B2CBF),
-                            contentColor = Color.White
-                        ),
-                        shape = RoundedCornerShape(15.dp),
+                        topColor = Color(0xFFB366FF),
+                        bottomColor = Color(0xFF7B2CBF),
+                        lipColor = Color(0xFF47126B),
+                        cornerRadius = 16.dp,
+                        depth = 4.5.dp,
                         modifier = Modifier
                             .weight(0.9f)
-                            .height(50.dp)
-                            .border(2.dp, DeepNavyOutline, RoundedCornerShape(15.dp))
+                            .height(52.dp)
                             .testTag("open_rankings_button")
                     ) {
-                        Icon(Icons.Rounded.EmojiEvents, contentDescription = null, tint = PrimaryGold)
+                        Icon(
+                            imageVector = Icons.Rounded.EmojiEvents,
+                            contentDescription = null,
+                            tint = PrimaryGold,
+                            modifier = Modifier.size(19.dp)
+                        )
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text(
+                        CartoonStrokeText(
                             text = if (isKo) "랭킹·레벨" else "Rankings",
-                            style = MaterialTheme.typography.titleSmall,
-                            maxLines = 1
+                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.ExtraBold),
+                            color = Color.White,
+                            shadowOffset = 1.5.dp
                         )
                     }
                 }
 
-                // AI 대전 & 로컬 2인 대전 & 조작법
+                // AI 대전 & 로컬 2인 대전 & 조작법 (게임 시작 시 풀스크린 맵 슬라이드 선택!)
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    horizontalArrangement = Arrangement.spacedBy(7.dp)
                 ) {
-                    Button(
+                    CartoonActionButton(
                         onClick = onStartAiMatch,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = PrimaryGoldDark,
-                            contentColor = Color.White
-                        ),
-                        shape = RoundedCornerShape(14.dp),
+                        topColor = Color(0xFFFFB703),
+                        bottomColor = PrimaryGoldDark,
+                        lipColor = Color(0xFF9A4400),
+                        cornerRadius = 15.dp,
+                        depth = 4.5.dp,
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                         modifier = Modifier
-                            .weight(1.1f)
-                            .height(48.dp)
-                            .border(2.dp, DeepNavyOutline, RoundedCornerShape(14.dp))
+                            .weight(1.12f)
+                            .height(50.dp)
                             .testTag("start_ai_button")
                     ) {
-                        Icon(Icons.Rounded.SmartToy, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Icon(
+                            imageVector = Icons.Rounded.SmartToy,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp)
+                        )
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text(
+                        CartoonStrokeText(
                             text = if (isKo) "AI 대전" else "vs AI",
-                            style = MaterialTheme.typography.titleSmall,
-                            maxLines = 1
+                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.ExtraBold),
+                            color = Color.White,
+                            shadowOffset = 1.5.dp
                         )
                     }
 
-                    Button(
+                    CartoonActionButton(
                         onClick = onStartLocalMatch,
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = PlayerBlue,
-                            contentColor = Color.White
-                        ),
-                        shape = RoundedCornerShape(14.dp),
+                        topColor = Color(0xFF56CCF2),
+                        bottomColor = PlayerBlue,
+                        lipColor = Color(0xFF0A4D7C),
+                        cornerRadius = 15.dp,
+                        depth = 4.5.dp,
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                         modifier = Modifier
                             .weight(1f)
-                            .height(48.dp)
+                            .height(50.dp)
                             .testTag("start_local_button")
                     ) {
-                        Icon(Icons.Rounded.Groups, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Icon(
+                            imageVector = Icons.Rounded.Groups,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(18.dp)
+                        )
                         Spacer(modifier = Modifier.width(4.dp))
-                        Text(
+                        CartoonStrokeText(
                             text = if (isKo) "2인 대전" else "Local 2P",
-                            style = MaterialTheme.typography.titleSmall,
-                            maxLines = 1
+                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.ExtraBold),
+                            color = Color.White,
+                            shadowOffset = 1.5.dp
                         )
                     }
 
-                    OutlinedButton(
+                    CartoonActionButton(
                         onClick = onOpenTutorial,
-                        shape = RoundedCornerShape(14.dp),
+                        topColor = Color(0xFF3E5C76),
+                        bottomColor = Color(0xFF23395B),
+                        lipColor = Color(0xFF101D30),
+                        borderColor = PrimaryGold,
+                        cornerRadius = 15.dp,
+                        depth = 4.5.dp,
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
                         modifier = Modifier
-                            .height(48.dp)
+                            .height(50.dp)
                             .testTag("tutorial_button")
                     ) {
-                        Icon(Icons.Rounded.HelpOutline, contentDescription = null, tint = PrimaryGold, modifier = Modifier.size(18.dp))
+                        Icon(
+                            imageVector = Icons.Rounded.HelpOutline,
+                            contentDescription = null,
+                            tint = PrimaryGold,
+                            modifier = Modifier.size(18.dp)
+                        )
                         Spacer(modifier = Modifier.width(3.dp))
                         Text(
                             text = if (isKo) "가이드" else "Guide",
                             style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold,
                             color = PrimaryGold
                         )
                     }
@@ -769,13 +874,21 @@ fun SettingsOverlay(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
+                CartoonStrokeText(
                     text = if (isKo) "게임 설정" else "Settings",
                     style = MaterialTheme.typography.headlineMedium,
                     color = PrimaryGold
                 )
-                IconButton(onClick = onDismiss, modifier = Modifier.size(44.dp)) {
-                    Icon(Icons.Rounded.Close, contentDescription = "Close", tint = Color.White)
+                CartoonIconButton(
+                    onClick = onDismiss,
+                    topColor = Color(0xFFFF6B6B),
+                    bottomColor = DangerRed,
+                    lipColor = Color(0xFF7D1120),
+                    shape = CircleShape,
+                    depth = 3.dp,
+                    modifier = Modifier.size(42.dp)
+                ) {
+                    Icon(Icons.Rounded.Close, contentDescription = "Close", tint = Color.White, modifier = Modifier.size(20.dp))
                 }
             }
 
@@ -932,19 +1045,21 @@ fun SettingsOverlay(
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     AppLanguage.entries.forEach { lang ->
                         val selected = settings.language == lang
-                        Box(
-                            modifier = Modifier
-                                .height(42.dp)
-                                .clip(RoundedCornerShape(10.dp))
-                                .background(if (selected) PrimaryGold else Color(0xFF23395B))
-                                .border(2.dp, DeepNavyOutline, RoundedCornerShape(10.dp))
-                                .clickable { onSelectLanguage(lang) }
-                                .padding(horizontal = 12.dp),
-                            contentAlignment = Alignment.Center
+                        CartoonPillChip(
+                            selected = selected,
+                            onClick = { onSelectLanguage(lang) },
+                            selectedTopColor = Color(0xFFFFE66D),
+                            selectedBottomColor = PrimaryGold,
+                            selectedLipColor = Color(0xFFB37400),
+                            cornerRadius = 11.dp,
+                            depth = 3.dp,
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 2.dp),
+                            modifier = Modifier.height(42.dp)
                         ) {
                             Text(
                                 text = lang.label,
                                 style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Bold,
                                 color = if (selected) DeepNavyOutline else Color.White
                             )
                         }
@@ -1054,17 +1169,22 @@ fun TutorialOverlay(
                 TutorialBullet("5. Battlefield Props & Obstacles", "Destroy the central castle wall and sky bridges! Hit TNT barrels, collect Supply Crates, bounce off Bumpers, and ride Updraft Vents.")
             }
             Spacer(modifier = Modifier.height(12.dp))
-            Button(
+            CartoonActionButton(
                 onClick = onDismiss,
-                colors = ButtonDefaults.buttonColors(containerColor = PrimaryGoldDark),
+                topColor = Color(0xFFFFB703),
+                bottomColor = PrimaryGoldDark,
+                lipColor = Color(0xFF9A4400),
+                cornerRadius = 15.dp,
+                depth = 4.5.dp,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(48.dp)
+                    .height(50.dp)
             ) {
-                Text(
+                CartoonStrokeText(
                     text = if (isKo) "확인했어요!" else "Got it!",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = Color.White
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
+                    color = Color.White,
+                    shadowOffset = 1.5.dp
                 )
             }
         }
@@ -1107,7 +1227,7 @@ fun PauseOverlay(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Text(
+            CartoonStrokeText(
                 text = if (isOnline) {
                     if (isKo) "온라인 전투 메뉴" else "Online Match Menu"
                 } else {
@@ -1116,48 +1236,80 @@ fun PauseOverlay(
                 style = MaterialTheme.typography.headlineMedium,
                 color = PrimaryGold
             )
-            Button(
+            CartoonActionButton(
                 onClick = onResume,
-                colors = ButtonDefaults.buttonColors(containerColor = SuccessGreen),
+                topColor = Color(0xFF70F8BA),
+                bottomColor = SuccessGreen,
+                lipColor = Color(0xFF007A4D),
+                cornerRadius = 15.dp,
+                depth = 4.5.dp,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(48.dp)
+                    .height(50.dp)
                     .testTag("resume_button")
             ) {
                 Icon(Icons.Rounded.PlayArrow, contentDescription = null, tint = DeepNavyOutline)
                 Spacer(modifier = Modifier.width(6.dp))
-                Text(if (isKo) "계속하기" else "Resume", style = MaterialTheme.typography.titleMedium, color = DeepNavyOutline)
+                Text(
+                    text = if (isKo) "계속하기" else "Resume",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = DeepNavyOutline
+                )
             }
             if (!isOnline) {
-                Button(
+                CartoonActionButton(
                     onClick = onRestart,
-                    colors = ButtonDefaults.buttonColors(containerColor = PlayerBlue),
+                    topColor = Color(0xFF56CCF2),
+                    bottomColor = PlayerBlue,
+                    lipColor = Color(0xFF0A4D7C),
+                    cornerRadius = 15.dp,
+                    depth = 4.5.dp,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(48.dp)
+                        .height(50.dp)
                         .testTag("restart_button")
                 ) {
-                    Icon(Icons.Rounded.Refresh, contentDescription = null)
+                    Icon(Icons.Rounded.Refresh, contentDescription = null, tint = Color.White)
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text(if (isKo) "다시 시작" else "Restart", style = MaterialTheme.typography.titleMedium)
+                    CartoonStrokeText(
+                        text = if (isKo) "다시 시작" else "Restart",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
+                        color = Color.White,
+                        shadowOffset = 1.5.dp
+                    )
                 }
             }
-            Button(
+            CartoonActionButton(
                 onClick = onOpenSettings,
-                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF335C67)),
+                topColor = Color(0xFF4D8B9C),
+                bottomColor = Color(0xFF335C67),
+                lipColor = Color(0xFF1A343B),
+                cornerRadius = 15.dp,
+                depth = 4.5.dp,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(48.dp)
+                    .height(50.dp)
             ) {
-                Icon(Icons.Rounded.Settings, contentDescription = null)
+                Icon(Icons.Rounded.Settings, contentDescription = null, tint = Color.White)
                 Spacer(modifier = Modifier.width(6.dp))
-                Text(if (isKo) "사운드 · 언어 설정" else "Audio & Language", style = MaterialTheme.typography.titleMedium)
+                Text(
+                    text = if (isKo) "사운드 · 언어 설정" else "Audio & Language",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = Color.White
+                )
             }
-            OutlinedButton(
+            CartoonActionButton(
                 onClick = onMainMenu,
+                topColor = if (isOnline) Color(0xFFFF6B6B) else Color(0xFF3A5270),
+                bottomColor = if (isOnline) DangerRed else Color(0xFF21334A),
+                lipColor = if (isOnline) Color(0xFF7D1120) else Color(0xFF0F1B2C),
+                cornerRadius = 15.dp,
+                depth = 4.5.dp,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(48.dp)
+                    .height(50.dp)
                     .testTag("main_menu_button")
             ) {
                 Text(
@@ -1167,7 +1319,8 @@ fun PauseOverlay(
                         if (isKo) "메인 화면으로" else "Main Menu"
                     },
                     style = MaterialTheme.typography.titleMedium,
-                    color = if (isOnline) DangerRed else Color.White
+                    fontWeight = FontWeight.ExtraBold,
+                    color = Color.White
                 )
             }
         }
@@ -1338,40 +1491,64 @@ fun GameOverOverlay(
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 if (state.gameMode == GameMode.ONLINE_PVP && onBackToLobby != null) {
-                    Button(
+                    CartoonActionButton(
                         onClick = onBackToLobby,
-                        colors = ButtonDefaults.buttonColors(containerColor = SuccessGreen),
+                        topColor = Color(0xFF70F8BA),
+                        bottomColor = SuccessGreen,
+                        lipColor = Color(0xFF007A4D),
+                        cornerRadius = 15.dp,
+                        depth = 4.5.dp,
                         modifier = Modifier
                             .weight(1f)
-                            .height(48.dp)
+                            .height(50.dp)
                             .testTag("back_to_lobby_button")
                     ) {
                         Text(
                             text = if (isKo) "온라인 대기실로" else "Online Lobby",
                             style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.ExtraBold,
                             color = DeepNavyOutline
                         )
                     }
                 } else {
-                    Button(
+                    CartoonActionButton(
                         onClick = onPlayAgain,
-                        colors = ButtonDefaults.buttonColors(containerColor = PrimaryGoldDark),
+                        topColor = Color(0xFFFFB703),
+                        bottomColor = PrimaryGoldDark,
+                        lipColor = Color(0xFF9A4400),
+                        cornerRadius = 15.dp,
+                        depth = 4.5.dp,
                         modifier = Modifier
                             .weight(1f)
-                            .height(48.dp)
+                            .height(50.dp)
                             .testTag("play_again_button")
                     ) {
-                        Text(if (isKo) "다시 대전" else "Play Again", style = MaterialTheme.typography.titleMedium, color = Color.White)
+                        CartoonStrokeText(
+                            text = if (isKo) "다시 대전" else "Play Again",
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.ExtraBold),
+                            color = Color.White,
+                            shadowOffset = 1.5.dp
+                        )
                     }
                 }
-                OutlinedButton(
+                CartoonActionButton(
                     onClick = onMainMenu,
+                    topColor = Color(0xFF3E5C76),
+                    bottomColor = Color(0xFF23395B),
+                    lipColor = Color(0xFF101D30),
+                    cornerRadius = 15.dp,
+                    depth = 4.5.dp,
                     modifier = Modifier
                         .weight(1f)
-                        .height(48.dp)
+                        .height(50.dp)
                         .testTag("result_main_menu_button")
                 ) {
-                    Text(if (isKo) "메인으로" else "Main Menu", style = MaterialTheme.typography.titleMedium, color = Color.White)
+                    Text(
+                        text = if (isKo) "메인으로" else "Main Menu",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Color.White
+                    )
                 }
             }
         }

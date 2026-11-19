@@ -54,6 +54,7 @@ import com.example.ui.battle.BattleCanvas
 import com.example.ui.battle.BattleHud
 import com.example.ui.battle.BattleViewModel
 import com.example.ui.battle.GameOverOverlay
+import com.example.ui.battle.MapSelectCarouselOverlay
 import com.example.ui.battle.PauseOverlay
 import com.example.ui.battle.SettingsOverlay
 import com.example.ui.battle.TitleOverlay
@@ -193,6 +194,7 @@ fun AuthenticatedCannonBattleScreen(
 
     var lobbyTabOpen by remember { mutableStateOf<LobbyTab?>(null) }
     var showTankSelector by remember { mutableStateOf(false) }
+    var pendingMapPickerMode by remember { mutableStateOf<PendingMapPickerMode?>(null) }
     var pushPermissionHint by remember { mutableStateOf<String?>(null) }
     var lastHandledInviteTapTs by remember { mutableLongStateOf(0L) }
     var startedOnlineRoomId by remember { mutableStateOf<String?>(null) }
@@ -325,6 +327,7 @@ fun AuthenticatedCannonBattleScreen(
                     lastAppliedTurnSeq = room.turnSeq
                     matchRecordedForCurrentGame = false
                     lobbyTabOpen = null
+                    pendingMapPickerMode = null
                     onlineViewModel.clearProgression()
                     battleViewModel.startOnlineMatch(room, currentUser.uid)
                 } else if (room.turnSeq > lastAppliedTurnSeq) {
@@ -381,10 +384,12 @@ fun AuthenticatedCannonBattleScreen(
             hudState.showSettings ||
             hudState.showTutorial ||
             showTankSelector ||
+            pendingMapPickerMode != null ||
             isInWaitingRoom ||
             isLobbyVisible
     ) {
         when {
+            pendingMapPickerMode != null -> pendingMapPickerMode = null
             showTankSelector -> showTankSelector = false
             hudState.showSettings -> battleViewModel.setShowSettings(false)
             hudState.showTutorial -> battleViewModel.setShowTutorial(false)
@@ -437,26 +442,10 @@ fun AuthenticatedCannonBattleScreen(
                 profile = myProfile,
                 pendingInviteCount = pendingInviteCount,
                 onSelectDifficulty = battleViewModel::selectDifficulty,
-                onSelectMap = battleViewModel::selectMap,
+                onOpenMapPreview = { pendingMapPickerMode = PendingMapPickerMode.AI_MATCH },
                 onOpenTankSelector = { showTankSelector = true },
-                onStartAiMatch = {
-                    matchRecordedForCurrentGame = false
-                    onlineViewModel.clearProgression()
-                    battleViewModel.startMatch(
-                        mode = GameMode.AI_VS_PLAYER,
-                        playerNickname = myProfile?.nickname ?: fallbackNickname,
-                        playerHpBonus = myProfile?.levelHpBonus ?: 0
-                    )
-                },
-                onStartLocalMatch = {
-                    matchRecordedForCurrentGame = false
-                    onlineViewModel.clearProgression()
-                    battleViewModel.startMatch(
-                        mode = GameMode.LOCAL_2P,
-                        playerNickname = myProfile?.nickname ?: fallbackNickname,
-                        playerHpBonus = 0
-                    )
-                },
+                onStartAiMatch = { pendingMapPickerMode = PendingMapPickerMode.AI_MATCH },
+                onStartLocalMatch = { pendingMapPickerMode = PendingMapPickerMode.LOCAL_2P },
                 onOpenOnlineLobby = {
                     onlineViewModel.clearStatusMessage()
                     lobbyTabOpen = LobbyTab.ROOMS
@@ -535,7 +524,7 @@ fun AuthenticatedCannonBattleScreen(
                 leaderboardState = leaderboardState,
                 isBusy = onlineBusy,
                 statusMessage = onlineStatusMessage,
-                onChangeMap = onlineViewModel::changeRoomMap,
+                onOpenMapSelector = { pendingMapPickerMode = PendingMapPickerMode.ONLINE_ROOM_MAP },
                 onOpenTankSelector = { showTankSelector = true },
                 onToggleReady = onlineViewModel::toggleGuestReady,
                 onStartMatch = onlineViewModel::startOnlineBattle,
@@ -638,6 +627,69 @@ fun AuthenticatedCannonBattleScreen(
             )
         }
 
+        // 게임 시작 직전 풀스크린 카툰 전장 맵 슬라이드 선택 화면
+        val mapPickerMode = pendingMapPickerMode
+        if (mapPickerMode != null) {
+            val isKo = settings.language == AppLanguage.KO
+            val initialMapForPicker = when (mapPickerMode) {
+                PendingMapPickerMode.ONLINE_ROOM_MAP -> activeRoom?.parsedMapTheme() ?: selectedMap
+                else -> selectedMap
+            }
+            val modeLabelText = when (mapPickerMode) {
+                PendingMapPickerMode.AI_MATCH -> if (isKo) "AI 대전 · ${selectedDifficulty.label(settings.language)}" else "vs AI · ${selectedDifficulty.label(settings.language)}"
+                PendingMapPickerMode.LOCAL_2P -> if (isKo) "2인 로컬 대전" else "Local 2P Battle"
+                PendingMapPickerMode.ONLINE_ROOM_MAP -> if (isKo) "온라인 대기실 전장" else "Online Room Map"
+            }
+            val confirmLabelText = when (mapPickerMode) {
+                PendingMapPickerMode.ONLINE_ROOM_MAP -> if (isKo) "이 전장으로 결정!" else "Select This Map!"
+                else -> if (isKo) "게임 시작!" else "START BATTLE!"
+            }
+
+            MapSelectCarouselOverlay(
+                initialMap = initialMapForPicker,
+                selectedTank = selectedTank,
+                modeLabel = modeLabelText,
+                confirmLabel = confirmLabelText,
+                isBattleLaunch = mapPickerMode != PendingMapPickerMode.ONLINE_ROOM_MAP,
+                language = settings.language,
+                onMapFocused = { focusedMap ->
+                    if (mapPickerMode != PendingMapPickerMode.ONLINE_ROOM_MAP) {
+                        battleViewModel.selectMap(focusedMap)
+                    }
+                },
+                onConfirmMap = { chosenMap ->
+                    pendingMapPickerMode = null
+                    when (mapPickerMode) {
+                        PendingMapPickerMode.AI_MATCH -> {
+                            battleViewModel.selectMap(chosenMap)
+                            matchRecordedForCurrentGame = false
+                            onlineViewModel.clearProgression()
+                            battleViewModel.startMatch(
+                                mode = GameMode.AI_VS_PLAYER,
+                                playerNickname = myProfile?.nickname ?: fallbackNickname,
+                                playerHpBonus = myProfile?.levelHpBonus ?: 0
+                            )
+                        }
+                        PendingMapPickerMode.LOCAL_2P -> {
+                            battleViewModel.selectMap(chosenMap)
+                            matchRecordedForCurrentGame = false
+                            onlineViewModel.clearProgression()
+                            battleViewModel.startMatch(
+                                mode = GameMode.LOCAL_2P,
+                                playerNickname = myProfile?.nickname ?: fallbackNickname,
+                                playerHpBonus = 0
+                            )
+                        }
+                        PendingMapPickerMode.ONLINE_ROOM_MAP -> {
+                            battleViewModel.selectMap(chosenMap)
+                            onlineViewModel.changeRoomMap(chosenMap)
+                        }
+                    }
+                },
+                onDismiss = { pendingMapPickerMode = null }
+            )
+        }
+
         // 최초 로그인 시 1회성 친구 초대 푸시 알림 수신 선택 다이얼로그
         if (!showSplash &&
             !settings.pushOptInPrompted &&
@@ -645,6 +697,7 @@ fun AuthenticatedCannonBattleScreen(
             !isInWaitingRoom &&
             !isLobbyVisible &&
             !showTankSelector &&
+            pendingMapPickerMode == null &&
             !hudState.showSettings &&
             !hudState.showTutorial
         ) {
@@ -677,4 +730,10 @@ fun AuthenticatedCannonBattleScreen(
             modifier = Modifier.align(Alignment.TopCenter)
         )
     }
+}
+
+private enum class PendingMapPickerMode {
+    AI_MATCH,
+    LOCAL_2P,
+    ONLINE_ROOM_MAP
 }
