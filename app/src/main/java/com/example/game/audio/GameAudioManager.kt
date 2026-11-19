@@ -3,11 +3,13 @@ package com.example.game.audio
 import android.content.Context
 import android.media.AudioAttributes
 import android.media.MediaPlayer
+import android.media.PlaybackParams
 import android.media.SoundPool
 import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import com.example.R
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -48,8 +50,8 @@ enum class SfxType {
 }
 
 /**
- * 프로시저럴 16-bit PCM 신디사이저 기반 게임 오디오 매니저.
- * 외부 음원 파일 없이도 경쾌한 아케이드 BGM 3종과 타격감 있는 효과음, 햅틱 진동을 제공한다.
+ * 번들 MP3 음원(bgm2.mp3 배경음악, expsound.mp3 폭탄 폭발음)과
+ * 보조 프로시저럴 16-bit PCM 효과음 및 햅틱 진동을 결합한 게임 오디오 매니저.
  */
 class GameAudioManager(context: Context) {
 
@@ -73,7 +75,8 @@ class GameAudioManager(context: Context) {
     private var isInitialized = false
     private var isLifecyclePaused = false
 
-    private val bgmFiles = mutableMapOf<BgmTrack, File>()
+    private val explosionPlayers = mutableListOf<MediaPlayer>()
+    private var explosionCursor = 0
 
     private val vibrator: Vibrator? by lazy {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
@@ -92,13 +95,13 @@ class GameAudioManager(context: Context) {
     private fun initAudioAsync() {
         scope.launch {
             val cacheDir = File(appContext.cacheDir, "synth_audio").apply { mkdirs() }
-            val attrs = AudioAttributes.Builder()
+            val sfxAttrs = AudioAttributes.Builder()
                 .setUsage(AudioAttributes.USAGE_GAME)
                 .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
                 .build()
             val pool = SoundPool.Builder()
                 .setMaxStreams(8)
-                .setAudioAttributes(attrs)
+                .setAudioAttributes(sfxAttrs)
                 .build()
 
             val generatedSfx = withContext(Dispatchers.Default) {
@@ -127,19 +130,39 @@ class GameAudioManager(context: Context) {
             }
             soundPool = pool
 
-            val generatedBgm = withContext(Dispatchers.Default) {
-                mapOf(
-                    BgmTrack.MENU to writeWav(File(cacheDir, "bgm_menu.wav"), synthMenuBgm()),
-                    BgmTrack.BATTLE to writeWav(File(cacheDir, "bgm_battle.wav"), synthBattleBgm()),
-                    BgmTrack.VICTORY to writeWav(File(cacheDir, "bgm_victory.wav"), synthVictoryBgm())
-                )
+            // expsound.mp3는 3채널 MediaPlayer 풀로 사전 로드 (SoundPool 1MB PCM 제한 회피 + 즉각 중첩 재생)
+            val preloadedExplosions = withContext(Dispatchers.IO) {
+                buildList {
+                    repeat(EXPLOSION_POOL_SIZE) {
+                        createRawPlayer(R.raw.expsound, sfxAttrs, looping = false)?.let { add(it) }
+                    }
+                }
             }
-            bgmFiles.putAll(generatedBgm)
+            explosionPlayers.addAll(preloadedExplosions)
             isInitialized = true
 
             if (!isLifecyclePaused) {
                 startBgmInternal(desiredTrack)
             }
+        }
+    }
+
+    private fun createRawPlayer(
+        rawResId: Int,
+        attributes: AudioAttributes,
+        looping: Boolean
+    ): MediaPlayer? {
+        return try {
+            appContext.resources.openRawResourceFd(rawResId)?.use { afd ->
+                MediaPlayer().apply {
+                    setAudioAttributes(attributes)
+                    setDataSource(afd.fileDescriptor, afd.startOffset, afd.length)
+                    isLooping = looping
+                    prepare()
+                }
+            }
+        } catch (_: Exception) {
+            null
         }
     }
 
@@ -170,8 +193,28 @@ class GameAudioManager(context: Context) {
             stopBgmPlayer()
             return
         }
-        if (currentTrack == track && mediaPlayer?.isPlaying == true) return
+        val mp = mediaPlayer
+        if (mp != null && track != BgmTrack.NONE) {
+            val vol = bgmVolumeFor(track)
+            try {
+                mp.setVolume(vol, vol)
+                if (!mp.isPlaying) {
+                    mp.start()
+                }
+                currentTrack = track
+                return
+            } catch (_: Exception) {
+                // 재생 실패 시 아래에서 재초기화
+            }
+        }
         startBgmInternal(track)
+    }
+
+    private fun bgmVolumeFor(track: BgmTrack): Float = when (track) {
+        BgmTrack.MENU -> 0.44f
+        BgmTrack.BATTLE -> 0.52f
+        BgmTrack.VICTORY -> 0.36f
+        BgmTrack.NONE -> 0f
     }
 
     private fun startBgmInternal(track: BgmTrack) {
@@ -180,27 +223,28 @@ class GameAudioManager(context: Context) {
             currentTrack = BgmTrack.NONE
             return
         }
-        val file = bgmFiles[track] ?: return
         stopBgmPlayer()
-        try {
-            val mp = MediaPlayer().apply {
-                setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setUsage(AudioAttributes.USAGE_GAME)
-                        .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
-                        .build()
-                )
-                setDataSource(file.absolutePath)
-                isLooping = true
-                setVolume(0.36f, 0.36f)
-                prepare()
-                start()
+        val musicAttrs = AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_GAME)
+            .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+            .build()
+        val mp = createRawPlayer(R.raw.bgm2, musicAttrs, looping = true)
+        if (mp != null) {
+            try {
+                val vol = bgmVolumeFor(track)
+                mp.setVolume(vol, vol)
+                mp.start()
+                mediaPlayer = mp
+                currentTrack = track
+                return
+            } catch (_: Exception) {
+                try {
+                    mp.release()
+                } catch (_: Exception) {
+                }
             }
-            mediaPlayer = mp
-            currentTrack = track
-        } catch (_: Exception) {
-            currentTrack = BgmTrack.NONE
         }
+        currentTrack = BgmTrack.NONE
     }
 
     private fun stopBgmPlayer() {
@@ -224,6 +268,12 @@ class GameAudioManager(context: Context) {
             }
         } catch (_: Exception) {
         }
+        explosionPlayers.forEach { player ->
+            try {
+                if (player.isPlaying) player.pause()
+            } catch (_: Exception) {
+            }
+        }
     }
 
     fun onLifecycleResume() {
@@ -231,9 +281,12 @@ class GameAudioManager(context: Context) {
         if (!isInitialized) return
         if (bgmEnabled && desiredTrack != BgmTrack.NONE) {
             val mp = mediaPlayer
-            if (mp != null && currentTrack == desiredTrack) {
+            if (mp != null) {
                 try {
+                    val vol = bgmVolumeFor(desiredTrack)
+                    mp.setVolume(vol, vol)
                     mp.start()
+                    currentTrack = desiredTrack
                 } catch (_: Exception) {
                     startBgmInternal(desiredTrack)
                 }
@@ -245,8 +298,47 @@ class GameAudioManager(context: Context) {
 
     fun playSfx(type: SfxType, volume: Float = 0.85f, pitch: Float = 1.0f) {
         if (!sfxEnabled) return
+        if (type == SfxType.EXPLOSION_SMALL || type == SfxType.EXPLOSION_BIG) {
+            if (playBundledExplosion(isBig = type == SfxType.EXPLOSION_BIG, volume = volume, pitch = pitch)) {
+                return
+            }
+        }
         val id = soundIds[type] ?: return
         soundPool?.play(id, volume, volume, 1, 0, pitch.coerceIn(0.6f, 1.6f))
+    }
+
+    private fun playBundledExplosion(isBig: Boolean, volume: Float, pitch: Float): Boolean {
+        if (explosionPlayers.isEmpty()) return false
+        val player = explosionPlayers.firstOrNull { p ->
+            try {
+                !p.isPlaying
+            } catch (_: Exception) {
+                false
+            }
+        } ?: explosionPlayers[explosionCursor % explosionPlayers.size]
+        explosionCursor = (explosionCursor + 1) % explosionPlayers.size
+
+        return try {
+            val effectiveVol = (if (isBig) volume * 1.0f else volume * 0.86f).coerceIn(0.05f, 1.0f)
+            val baseSpeed = if (isBig) 0.94f else 1.04f
+            val speed = (baseSpeed * pitch).coerceIn(0.75f, 1.35f)
+            if (player.isPlaying) {
+                player.seekTo(0)
+            } else {
+                player.seekTo(0)
+            }
+            player.setVolume(effectiveVol, effectiveVol)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                try {
+                    player.playbackParams = PlaybackParams().setSpeed(speed)
+                } catch (_: Exception) {
+                }
+            }
+            player.start()
+            true
+        } catch (_: Exception) {
+            false
+        }
     }
 
     fun vibrate(durationMs: Long, amplitude: Int = 180) {
@@ -266,6 +358,17 @@ class GameAudioManager(context: Context) {
 
     fun release() {
         stopBgmPlayer()
+        explosionPlayers.forEach { player ->
+            try {
+                if (player.isPlaying) player.stop()
+            } catch (_: Exception) {
+            }
+            try {
+                player.release()
+            } catch (_: Exception) {
+            }
+        }
+        explosionPlayers.clear()
         soundPool?.release()
         soundPool = null
     }
@@ -519,114 +622,6 @@ class GameAudioManager(context: Context) {
         return out
     }
 
-    // --- 다중 트랙 BGM 루프 작곡 (리드 + 베이스 + 경쾌한 아케이드 퍼커션) ---
-
-    private fun synthMenuBgm(): ShortArray {
-        // 116 BPM, 16스텝(8분음표 기준 2바) 경쾌한 카툰 행진곡 (C Major)
-        val leadMidi = listOf(
-            72, 0, 76, 79, 84, 0, 79, 76,
-            74, 0, 77, 81, 79, 0, 76, 74,
-            72, 0, 76, 79, 84, 83, 81, 79,
-            77, 76, 74, 72, 74, 0, 79, 0
-        )
-        val bassMidi = listOf(
-            48, 0, 55, 0, 48, 0, 55, 0,
-            53, 0, 60, 0, 55, 0, 50, 0,
-            48, 0, 55, 0, 52, 0, 57, 0,
-            53, 0, 55, 0, 48, 0, 55, 0
-        )
-        return renderPatternBgm(leadMidi, bassMidi, stepDurSec = 0.21, leadWave = WaveType.SQUARE_SOFT)
-    }
-
-    private fun synthBattleBgm(): ShortArray {
-        // 132 BPM, 긴장감 있고 경쾌한 전술 아케이드 테마 (A Minor / C Major)
-        val leadMidi = listOf(
-            69, 0, 72, 76, 79, 0, 76, 72,
-            74, 0, 76, 74, 72, 71, 69, 0,
-            69, 72, 76, 0, 81, 0, 79, 76,
-            77, 76, 74, 72, 71, 0, 76, 0
-        )
-        val bassMidi = listOf(
-            45, 45, 52, 0, 45, 45, 52, 0,
-            50, 50, 57, 0, 52, 52, 59, 0,
-            45, 45, 52, 0, 48, 48, 55, 0,
-            53, 0, 55, 0, 52, 0, 52, 0
-        )
-        return renderPatternBgm(leadMidi, bassMidi, stepDurSec = 0.18, leadWave = WaveType.SQUARE_SOFT)
-    }
-
-    private fun synthVictoryBgm(): ShortArray {
-        val leadMidi = listOf(
-            72, 76, 79, 0, 84, 0, 79, 84,
-            81, 0, 79, 76, 79, 0, 0, 0,
-            74, 77, 81, 0, 86, 0, 83, 79,
-            84, 0, 84, 0, 84, 0, 0, 0
-        )
-        val bassMidi = listOf(
-            48, 0, 55, 0, 48, 0, 55, 0,
-            53, 0, 60, 0, 48, 0, 55, 0,
-            50, 0, 57, 0, 55, 0, 59, 0,
-            48, 0, 55, 0, 48, 0, 0, 0
-        )
-        return renderPatternBgm(leadMidi, bassMidi, stepDurSec = 0.19, leadWave = WaveType.TRIANGLE)
-    }
-
-    private fun renderPatternBgm(
-        leadMidi: List<Int>,
-        bassMidi: List<Int>,
-        stepDurSec: Double,
-        leadWave: WaveType
-    ): ShortArray {
-        val steps = leadMidi.size
-        val samplesPerStep = (SAMPLE_RATE * stepDurSec).toInt()
-        val totalSamples = steps * samplesPerStep
-        val out = ShortArray(totalSamples)
-        val rng = Random(42)
-
-        for (step in 0 until steps) {
-            val lNote = leadMidi[step]
-            val bNote = bassMidi[step]
-            val lFreq = if (lNote > 0) midiToFreq(lNote) else 0.0
-            val bFreq = if (bNote > 0) midiToFreq(bNote) else 0.0
-            val isKick = (step % 4 == 0)
-            val isHat = (step % 2 == 1)
-
-            for (i in 0 until samplesPerStep) {
-                val t = i.toDouble() / SAMPLE_RATE
-                val attack = (1.0 - exp(-t * 140.0))
-
-                var sample = 0.0
-                if (lFreq > 0.0) {
-                    val lEnv = exp(-t * 5.2) * attack
-                    sample += evalWave(leadWave, lFreq * t) * lEnv * 0.24
-                }
-                if (bFreq > 0.0) {
-                    val bEnv = exp(-t * 6.5) * attack
-                    sample += evalWave(WaveType.TRIANGLE, bFreq * t) * bEnv * 0.30
-                }
-                if (isKick && t < 0.09) {
-                    val kFreq = 120.0 * exp(-t * 28.0) + 42.0
-                    sample += sin(2.0 * PI * kFreq * t) * exp(-t * 24.0) * 0.22
-                }
-                if (isHat && t < 0.04) {
-                    sample += (rng.nextDouble() * 2.0 - 1.0) * exp(-t * 85.0) * 0.07
-                }
-
-                // 루프 시작/끝 미세 클릭 방지 페이드
-                val idx = step * samplesPerStep + i
-                val loopEdgeFade = when {
-                    idx < 120 -> idx / 120.0
-                    idx > totalSamples - 120 -> (totalSamples - idx) / 120.0
-                    else -> 1.0
-                }
-                out[idx] = (sample * loopEdgeFade).coerceIn(-0.95, 0.95).let { (it * Short.MAX_VALUE).toInt().toShort() }
-            }
-        }
-        return out
-    }
-
-    private fun midiToFreq(midi: Int): Double = 440.0 * Math.pow(2.0, (midi - 69) / 12.0)
-
     private enum class WaveType {
         TRIANGLE,
         SQUARE_SOFT
@@ -645,5 +640,6 @@ class GameAudioManager(context: Context) {
 
     companion object {
         private const val SAMPLE_RATE = 22050
+        private const val EXPLOSION_POOL_SIZE = 3
     }
 }

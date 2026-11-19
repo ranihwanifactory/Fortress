@@ -282,8 +282,11 @@ class BattleViewModel(application: Application) : AndroidViewModel(application) 
                         event.weapon == WeaponType.POWER -> SfxType.EXPLOSION_BIG
                         else -> SfxType.EXPLOSION_SMALL
                     }
-                    val vol = if (event.isSubMunition) 0.55f else 0.9f
+                    val vol = if (event.isSubMunition) 0.55f else 0.92f
                     audio.playSfx(sfx, volume = vol)
+                    if (event.weapon == WeaponType.TRASH && !event.isSubMunition) {
+                        audio.playSfx(SfxType.EXPLOSION_SMALL, volume = 0.65f)
+                    }
                     if (event.hitTank) {
                         audio.playSfx(SfxType.HIT_CLANK, volume = 0.78f)
                     }
