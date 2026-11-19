@@ -20,6 +20,7 @@ import com.example.game.model.SceneryKind
 import com.example.game.model.SceneryProp
 import com.example.game.model.TankExpression
 import com.example.game.model.TankState
+import com.example.game.model.TankType
 import com.example.game.model.TurnPhase
 import com.example.game.model.WeaponType
 import com.example.game.model.WeatherParticle
@@ -172,7 +173,9 @@ class BattleEngine {
         diff: Difficulty,
         theme: MapTheme = mapTheme,
         playerNickname: String? = null,
-        playerHpBonus: Int = 0
+        playerHpBonus: Int = 0,
+        p1TankType: TankType = TankType.CLASSIC,
+        p2TankType: TankType? = null
     ) {
         gameMode = mode
         difficulty = diff
@@ -183,16 +186,23 @@ class BattleEngine {
         resetMatchBuffers()
 
         val seed = System.currentTimeMillis()
+        val opponentTank = p2TankType ?: TankType.entries
+            .filter { it != p1TankType }
+            .let { candidates -> candidates[(seed.toInt().let { kotlin.math.abs(it) }) % candidates.size] }
+
         terrain.generate(theme, seed)
         setupTanks(
             mode = mode,
             seed = seed,
             p1CustomName = playerNickname,
-            p1HpBonus = if (mode == GameMode.AI_VS_PLAYER) playerHpBonus else 0
+            p1HpBonus = if (mode == GameMode.AI_VS_PLAYER) playerHpBonus else 0,
+            p1TankType = p1TankType,
+            p2TankType = opponentTank
         )
         setupBattlefieldProps(theme, seed)
         initWeatherParticles(theme)
 
+        selectedWeapon = p1TankType.signatureWeapon
         cameraX = tanks[0].x
         cameraY = tanks[0].y - 80f
         beginTurn(0, isFirstTurn = true)
@@ -204,7 +214,9 @@ class BattleEngine {
         hostName: String,
         guestName: String,
         localIsHost: Boolean,
-        initialWindForce: Int
+        initialWindForce: Int,
+        hostTankType: TankType = TankType.CLASSIC,
+        guestTankType: TankType = TankType.MEGA_TITAN
     ) {
         gameMode = GameMode.ONLINE_PVP
         difficulty = Difficulty.NORMAL
@@ -220,11 +232,14 @@ class BattleEngine {
             seed = seed,
             p1CustomName = hostName,
             p2CustomName = guestName,
-            p1HpBonus = 0
+            p1HpBonus = 0,
+            p1TankType = hostTankType,
+            p2TankType = guestTankType
         )
         setupBattlefieldProps(theme, seed)
         initWeatherParticles(theme)
 
+        selectedWeapon = tanks[localTankIndex].tankType.signatureWeapon
         cameraX = tanks[0].x
         cameraY = tanks[0].y - 80f
         beginTurn(0, isFirstTurn = true)
@@ -259,7 +274,9 @@ class BattleEngine {
         seed: Long,
         p1CustomName: String? = null,
         p2CustomName: String? = null,
-        p1HpBonus: Int = 0
+        p1HpBonus: Int = 0,
+        p1TankType: TankType = TankType.CLASSIC,
+        p2TankType: TankType = TankType.MEGA_TITAN
     ) {
         tanks.clear()
         val rng = Random(seed xor 0x51A7L)
@@ -267,14 +284,17 @@ class BattleEngine {
         val p2X = terrain.worldWidth - (270f + rng.nextFloat() * 130f)
         val p1Y = terrain.findTopSurfaceY(p1X)
         val p2Y = terrain.findTopSurfaceY(p2X)
-        val p1MaxHp = (100 + p1HpBonus).coerceIn(100, 145)
+        val p1MaxHp = (100 + p1HpBonus + p1TankType.bonusHp).coerceIn(100, 160)
+        val p2MaxHp = (100 + p2TankType.bonusHp).coerceIn(100, 130)
+        val p1MaxFuel = 100f + p1TankType.bonusFuel
+        val p2MaxFuel = 100f + p2TankType.bonusFuel
 
         val defaultP1 = if (mode == GameMode.AI_VS_PLAYER) {
-            if (language == AppLanguage.KO) "블루 캡틴" else "Blue Captain"
-        } else "1P Blue"
+            p1TankType.label(language)
+        } else "1P ${p1TankType.label(language)}"
         val defaultP2 = if (mode == GameMode.AI_VS_PLAYER) {
-            if (language == AppLanguage.KO) "레드 불독 (AI)" else "Red Bulldog"
-        } else "2P Red"
+            "${p2TankType.label(language)} (AI)"
+        } else "2P ${p2TankType.label(language)}"
 
         tanks.add(
             TankState(
@@ -285,11 +305,14 @@ class BattleEngine {
                 y = p1Y,
                 hp = p1MaxHp,
                 maxHp = p1MaxHp,
+                fuel = p1MaxFuel,
+                maxFuel = p1MaxFuel,
                 slopeAngleDeg = terrain.computeSlopeAngleDeg(p1X, p1Y),
                 aimAngleDeg = 45f,
                 facingRight = true,
-                primaryColor = PlayerBlue,
-                accentColor = PlayerBlueLight
+                tankType = p1TankType,
+                primaryColor = p1TankType.primaryColor,
+                accentColor = p1TankType.accentColor
             )
         )
         tanks.add(
@@ -299,11 +322,16 @@ class BattleEngine {
                 isAi = (mode == GameMode.AI_VS_PLAYER),
                 x = p2X,
                 y = p2Y,
+                hp = p2MaxHp,
+                maxHp = p2MaxHp,
+                fuel = p2MaxFuel,
+                maxFuel = p2MaxFuel,
                 slopeAngleDeg = terrain.computeSlopeAngleDeg(p2X, p2Y),
                 aimAngleDeg = 45f,
                 facingRight = false,
-                primaryColor = EnemyCoral,
-                accentColor = EnemyCoralLight
+                tankType = p2TankType,
+                primaryColor = p2TankType.primaryColor,
+                accentColor = p2TankType.accentColor
             )
         )
     }
@@ -515,7 +543,8 @@ class BattleEngine {
         }
 
         tanks[tankIdx] = t
-        selectedWeapon = WeaponType.STANDARD
+        val signature = t.tankType.signatureWeapon
+        selectedWeapon = if ((t.weaponCooldowns[signature] ?: 0) <= 0) signature else WeaponType.STANDARD
 
         if (t.isAi) {
             turnPhase = TurnPhase.AI_THINKING
@@ -1236,7 +1265,9 @@ class BattleEngine {
 
         val updatedCooldowns = t.weaponCooldowns.toMutableMap()
         if (weapon.cooldownTurns > 0) {
-            updatedCooldowns[weapon] = weapon.cooldownTurns + 1
+            val reduction = if (weapon == t.tankType.signatureWeapon) t.tankType.signatureCooldownReduction else 0
+            val effectiveCooldown = (weapon.cooldownTurns - reduction).coerceAtLeast(1)
+            updatedCooldowns[weapon] = effectiveCooldown + 1
         }
         tanks[idx] = t.copy(
             lastPowerRatio = power,
@@ -1494,7 +1525,13 @@ class BattleEngine {
     ) {
         val craterRadius = if (isSubMunition) 24f else weapon.craterRadius
         val blastRadius = if (isSubMunition) 48f else weapon.blastRadius
-        val baseDamage = if (isSubMunition) 12 else weapon.damage
+        val attackerTank = tanks.firstOrNull { it.id == attackerId }?.tankType
+        val rawBaseDamage = if (isSubMunition) 12 else weapon.damage
+        val baseDamage = if (attackerTank != null && attackerTank.signatureWeapon == weapon) {
+            (rawBaseDamage * attackerTank.signatureDamageMultiplier).toInt()
+        } else {
+            rawBaseDamage
+        }
 
         terrain.carveCrater(x, y, craterRadius)
 

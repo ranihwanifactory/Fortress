@@ -62,6 +62,8 @@ class GameAudioManager(context: Context) {
 
     var bgmEnabled: Boolean = prefs.getBoolean("bgm_enabled", true)
         private set
+    var bgmVolume: Float = prefs.getFloat("bgm_volume", 0.7f).coerceIn(0f, 1f)
+        private set
     var sfxEnabled: Boolean = prefs.getBoolean("sfx_enabled", true)
         private set
     var vibrationEnabled: Boolean = prefs.getBoolean("vibration_enabled", true)
@@ -176,6 +178,28 @@ class GameAudioManager(context: Context) {
         }
     }
 
+    fun setBgmVolume(volume: Float) {
+        val clamped = volume.coerceIn(0f, 1f)
+        bgmVolume = clamped
+        prefs.edit().putFloat("bgm_volume", clamped).apply()
+        if (clamped > 0f && !bgmEnabled) {
+            bgmEnabled = true
+            prefs.edit().putBoolean("bgm_enabled", true).apply()
+            if (!isLifecyclePaused && isInitialized) {
+                startBgmInternal(desiredTrack)
+                return
+            }
+        }
+        val mp = mediaPlayer
+        if (mp != null && bgmEnabled && currentTrack != BgmTrack.NONE) {
+            val effective = bgmVolumeFor(currentTrack)
+            try {
+                mp.setVolume(effective, effective)
+            } catch (_: Exception) {
+            }
+        }
+    }
+
     fun setSfxEnabled(enabled: Boolean) {
         sfxEnabled = enabled
         prefs.edit().putBoolean("sfx_enabled", enabled).apply()
@@ -210,11 +234,14 @@ class GameAudioManager(context: Context) {
         startBgmInternal(track)
     }
 
-    private fun bgmVolumeFor(track: BgmTrack): Float = when (track) {
-        BgmTrack.MENU -> 0.44f
-        BgmTrack.BATTLE -> 0.52f
-        BgmTrack.VICTORY -> 0.36f
-        BgmTrack.NONE -> 0f
+    private fun bgmVolumeFor(track: BgmTrack): Float {
+        val trackGain = when (track) {
+            BgmTrack.MENU -> 0.72f
+            BgmTrack.BATTLE -> 0.85f
+            BgmTrack.VICTORY -> 0.60f
+            BgmTrack.NONE -> 0f
+        }
+        return (trackGain * bgmVolume).coerceIn(0f, 1f)
     }
 
     private fun startBgmInternal(track: BgmTrack) {

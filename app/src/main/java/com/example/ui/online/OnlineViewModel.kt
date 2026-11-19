@@ -12,6 +12,7 @@ import com.example.firebase.RoomInvite
 import com.example.game.engine.OnlineTurnSubmission
 import com.example.game.model.Difficulty
 import com.example.game.model.MapTheme
+import com.example.game.model.TankType
 import com.google.firebase.firestore.FirebaseFirestoreException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -88,7 +89,7 @@ class OnlineViewModel(
         }
         .stateIn(
             scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(STOP_TIMEOUT_MS),
+            started = SharingStarted.Eagerly,
             initialValue = OnlineUiState.Loading
         )
 
@@ -121,15 +122,47 @@ class OnlineViewModel(
     private val _isBusy = MutableStateFlow(false)
     val isBusy: StateFlow<Boolean> = _isBusy.asStateFlow()
 
+    private val _latestPushInvite = MutableStateFlow<RoomInvite?>(null)
+    val latestPushInvite: StateFlow<RoomInvite?> = _latestPushInvite.asStateFlow()
+
+    private val seenInviteIds = mutableSetOf<String>()
+    private var initialInvitesSeeded = false
+
+    init {
+        viewModelScope.launch {
+            incomingInvitesState.collect { state ->
+                val invites = (state as? OnlineUiState.Success)?.data ?: return@collect
+                if (!initialInvitesSeeded) {
+                    invites.forEach { seenInviteIds.add(it.id) }
+                    initialInvitesSeeded = true
+                } else {
+                    val fresh = invites.firstOrNull { it.id.isNotBlank() && it.id !in seenInviteIds }
+                    invites.forEach { seenInviteIds.add(it.id) }
+                    if (fresh != null) {
+                        _latestPushInvite.value = fresh
+                    }
+                    val activeBanner = _latestPushInvite.value
+                    if (activeBanner != null && invites.none { it.id == activeBanner.id }) {
+                        _latestPushInvite.value = null
+                    }
+                }
+            }
+        }
+    }
+
+    fun dismissPushInvite() {
+        _latestPushInvite.value = null
+    }
+
     fun currentProfileOrDefault(fallbackName: String = "전차병"): PlayerProfile {
         val state = myProfileState.value
         return (state as? OnlineUiState.Success)?.data
             ?: PlayerProfile(id = currentUserId, userId = currentUserId, nickname = fallbackName)
     }
 
-    fun ensureProfile(defaultNickname: String) {
+    fun ensureProfile(defaultNickname: String, initialPushEnabled: Boolean = false) {
         viewModelScope.launch {
-            repository.ensurePlayerProfile(defaultNickname)
+            repository.ensurePlayerProfile(defaultNickname, initialPushEnabled)
         }
     }
 
@@ -143,6 +176,25 @@ class OnlineViewModel(
             } else {
                 res.exceptionOrNull()?.localizedMessage ?: "닉네임 변경 실패"
             }
+        }
+    }
+
+    fun updateSelectedTank(tankType: TankType) {
+        viewModelScope.launch {
+            val res = repository.updateSelectedTank(tankType)
+            if (res.isFailure) {
+                _statusMessage.value = res.exceptionOrNull()?.localizedMessage ?: "탱크 변경 저장 실패"
+            }
+            val room = activeRoomState.value
+            if (room != null && room.status == "WAITING") {
+                repository.updateRoomTank(room, tankType)
+            }
+        }
+    }
+
+    fun updateInvitePushEnabled(enabled: Boolean) {
+        viewModelScope.launch {
+            repository.updateInvitePushEnabled(enabled)
         }
     }
 
@@ -265,7 +317,11 @@ class OnlineViewModel(
             val inviteRes = repository.sendRoomInvite(room, myProfile, targetProfile)
             _isBusy.value = false
             _statusMessage.value = if (inviteRes.isSuccess) {
-                "${targetProfile.nickname}님께 대전 초대를 보냈습니다!"
+                if (targetProfile.invitePushEnabled) {
+                    "${targetProfile.nickname}님께 대전 초대 푸시 알림을 보냈습니다!"
+                } else {
+                    "${targetProfile.nickname}님께 초대장을 보냈습니다 (상대가 푸시 알림 꺼둠 · 초대함으로 전달됨)"
+                }
             } else {
                 inviteRes.exceptionOrNull()?.localizedMessage ?: "초대 전송 실패"
             }
@@ -274,6 +330,9 @@ class OnlineViewModel(
 
     fun acceptInvite(invite: RoomInvite, fallbackName: String) {
         viewModelScope.launch {
+            if (_latestPushInvite.value?.id == invite.id) {
+                _latestPushInvite.value = null
+            }
             _isBusy.value = true
             repository.respondToInvite(invite.id, accept = true)
             val profile = currentProfileOrDefault(fallbackName)
@@ -289,6 +348,9 @@ class OnlineViewModel(
 
     fun declineInvite(invite: RoomInvite) {
         viewModelScope.launch {
+            if (_latestPushInvite.value?.id == invite.id) {
+                _latestPushInvite.value = null
+            }
             repository.respondToInvite(invite.id, accept = false)
         }
     }

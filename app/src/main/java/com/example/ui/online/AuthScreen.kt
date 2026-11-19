@@ -201,10 +201,28 @@ fun AuthScreen(
                     painter = painterResource(id = R.drawable.cannon_app_icon),
                     contentDescription = "캐논 대전 대표 탱크",
                     modifier = Modifier
-                        .size(112.dp)
-                        .clip(RoundedCornerShape(28.dp))
-                        .border(3.5.dp, Color.White, RoundedCornerShape(28.dp))
+                        .size(106.dp)
+                        .clip(RoundedCornerShape(26.dp))
+                        .border(3.5.dp, Color.White, RoundedCornerShape(26.dp))
                 )
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(50))
+                        .background(Color(0xDD132238))
+                        .border(1.5.dp, PrimaryGold, RoundedCornerShape(50))
+                        .padding(horizontal = 14.dp, vertical = 4.dp)
+                        .testTag("auth_creator_badge")
+                ) {
+                    Text(
+                        text = "제작 · 구지초도형캠프",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = PrimaryGold
+                    )
+                }
             }
 
             // 우측: 구글 로그인 카드

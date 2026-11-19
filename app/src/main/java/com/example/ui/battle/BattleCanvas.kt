@@ -28,6 +28,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.res.ResourcesCompat
 import com.example.R
+import com.example.game.engine.BattleEngine
 import com.example.game.engine.DestructibleTerrain
 import com.example.game.model.BattlePropState
 import com.example.game.model.BattleRenderSnapshot
@@ -40,12 +41,15 @@ import com.example.game.model.TankExpression
 import com.example.game.model.TankState
 import com.example.game.model.TurnPhase
 import com.example.game.model.WeaponType
+import com.example.ui.tank.drawThemedTankBody
 import com.example.ui.theme.DangerRed
 import com.example.ui.theme.DeepNavyOutline
 import com.example.ui.theme.PrimaryGold
 import com.example.ui.theme.SuccessGreen
+import com.example.ui.theme.WarningAmber
 import kotlin.math.PI
 import kotlin.math.cos
+import kotlin.math.roundToInt
 import kotlin.math.sin
 
 @Composable
@@ -100,6 +104,25 @@ fun BattleCanvas(
             textAlign = Paint.Align.CENTER
             textSize = 14f
             typeface = juaTypeface
+            color = DeepNavyOutline.toArgb()
+        }
+    }
+    val fuelTextPaint = remember(juaTypeface) {
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            textAlign = Paint.Align.CENTER
+            textSize = 14f
+            typeface = juaTypeface
+            color = Color.White.toArgb()
+        }
+    }
+    val fuelStrokePaint = remember(juaTypeface) {
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            textAlign = Paint.Align.CENTER
+            textSize = 14f
+            typeface = juaTypeface
+            style = Paint.Style.STROKE
+            strokeWidth = 3.8f
+            strokeJoin = Paint.Join.ROUND
             color = DeepNavyOutline.toArgb()
         }
     }
@@ -184,7 +207,19 @@ fun BattleCanvas(
                 }
             }
 
-            // 탱크 렌더링 (표정·실드·반동 포함)
+            // 활성 플레이어 탱크의 지형 위 이동 가용 범위 표시 (연료 기반 실시간 추적)
+            if (snapshot.turnPhase == TurnPhase.PLAYER_AIMING) {
+                val activeTank = snapshot.tanks.getOrNull(snapshot.activeTankIndex)
+                if (activeTank != null && activeTank.isAlive && !activeTank.isAi && !activeTank.isFalling) {
+                    drawTankMovementRange(
+                        tank = activeTank,
+                        terrain = terrain,
+                        animTime = snapshot.animTime
+                    )
+                }
+            }
+
+            // 탱크 렌더링 (표정·실드·반동·연료 게이지 포함)
             snapshot.tanks.forEachIndexed { idx, tank ->
                 if (tank.isAlive) {
                     val isActive = idx == snapshot.activeTankIndex &&
@@ -198,7 +233,9 @@ fun BattleCanvas(
                         chargingPower = snapshot.chargingPower,
                         animTime = snapshot.animTime,
                         namePaint = namePaint,
-                        nameStrokePaint = nameStrokePaint
+                        nameStrokePaint = nameStrokePaint,
+                        fuelTextPaint = fuelTextPaint,
+                        fuelStrokePaint = fuelStrokePaint
                     )
                 }
             }
@@ -474,6 +511,101 @@ private fun DrawScope.drawStarburst(
     drawPath(path = path, color = color)
 }
 
+private fun DrawScope.drawTankMovementRange(
+    tank: TankState,
+    terrain: DestructibleTerrain,
+    animTime: Float
+) {
+    val maxReachPx = ((tank.fuel / BattleEngine.FUEL_BURN_PER_SEC) * BattleEngine.TANK_MOVE_SPEED)
+        .coerceAtLeast(0f)
+    if (maxReachPx < 6f) return
+
+    val fuelFrac = (tank.fuel / tank.maxFuel.coerceAtLeast(1f)).coerceIn(0f, 1f)
+    val rangeColor = when {
+        fuelFrac > 0.35f -> SuccessGreen
+        fuelFrac > 0.15f -> WarningAmber
+        else -> DangerRed
+    }
+    val stepPx = 8f
+    val pulse = 0.72f + 0.28f * sin(animTime * 5.5f)
+
+    listOf(-1f, 1f).forEach { dir ->
+        val points = mutableListOf(Offset(tank.x, tank.y + 1f))
+        var curX = tank.x
+        var curY = tank.y
+        var traveled = 0f
+        while (traveled + stepPx <= maxReachPx) {
+            val nextX = curX + dir * stepPx
+            if (nextX < 36f || nextX > terrain.worldWidth - 36f) break
+            val groundY = terrain.findGroundY(nextX, curY, maxStepUp = 18f) ?: break
+            curX = nextX
+            curY = groundY
+            traveled += stepPx
+            points.add(Offset(curX, curY + 1f))
+        }
+        if (points.size >= 2) {
+            val path = Path().apply {
+                moveTo(points.first().x, points.first().y)
+                for (i in 1 until points.size) {
+                    lineTo(points[i].x, points[i].y)
+                }
+            }
+            // 지형 표면 위 진한 외곽선 + 밝은 이동 가능 점선 리본
+            drawPath(
+                path = path,
+                color = DeepNavyOutline.copy(alpha = 0.75f),
+                style = Stroke(width = 8.5f, cap = StrokeCap.Round)
+            )
+            drawPath(
+                path = path,
+                color = rangeColor.copy(alpha = 0.92f),
+                style = Stroke(
+                    width = 4.5f,
+                    cap = StrokeCap.Round,
+                    pathEffect = PathEffect.dashPathEffect(floatArrayOf(12f, 7f), -animTime * 22f * dir)
+                )
+            )
+
+            // 이동 가용 한계 지점 말뚝 & 빛나는 경계 핀
+            val endPt = points.last()
+            val poleTop = Offset(endPt.x, endPt.y - 22f)
+            drawLine(
+                color = DeepNavyOutline,
+                start = endPt,
+                end = poleTop,
+                strokeWidth = 5f,
+                cap = StrokeCap.Round
+            )
+            drawLine(
+                color = rangeColor,
+                start = endPt,
+                end = poleTop,
+                strokeWidth = 2.6f,
+                cap = StrokeCap.Round
+            )
+            // 방향 깃발 삼각형
+            val flagPath = Path().apply {
+                moveTo(poleTop.x, poleTop.y)
+                lineTo(poleTop.x - dir * 10f, poleTop.y + 4.5f)
+                lineTo(poleTop.x, poleTop.y + 9f)
+                close()
+            }
+            drawPath(path = flagPath, color = rangeColor.copy(alpha = pulse))
+            drawPath(path = flagPath, color = DeepNavyOutline, style = Stroke(width = 1.6f))
+            drawCircle(
+                color = rangeColor.copy(alpha = 0.35f * pulse),
+                radius = 9f,
+                center = endPt
+            )
+            drawCircle(
+                color = Color.White,
+                radius = 3.2f,
+                center = endPt
+            )
+        }
+    }
+}
+
 private fun DrawScope.drawCartoonTank(
     tank: TankState,
     isActive: Boolean,
@@ -481,29 +613,15 @@ private fun DrawScope.drawCartoonTank(
     chargingPower: Float,
     animTime: Float,
     namePaint: Paint,
-    nameStrokePaint: Paint
+    nameStrokePaint: Paint,
+    fuelTextPaint: Paint,
+    fuelStrokePaint: Paint
 ) {
     rotate(degrees = tank.slopeAngleDeg, pivot = Offset(tank.x, tank.y)) {
         val turretCenter = Offset(tank.x, tank.y - 22f)
         val barrelAngleDeg = if (tank.facingRight) -tank.aimAngleDeg else -(180f - tank.aimAngleDeg)
         val barrelRad = Math.toRadians(barrelAngleDeg.toDouble()).toFloat()
         val recoil = tank.recoilOffset
-
-        // 방어막 아이템 오라
-        if (tank.hasShield) {
-            val pulse = 1f + sin(animTime * 6f) * 0.05f
-            drawCircle(
-                color = Color(0x444CC9F0),
-                radius = 38f * pulse,
-                center = Offset(tank.x, tank.y - 19f)
-            )
-            drawCircle(
-                color = Color(0xCC90E0EF),
-                radius = 38f * pulse,
-                center = Offset(tank.x, tank.y - 19f),
-                style = Stroke(width = 3f)
-            )
-        }
 
         if (isActive && !tank.isAi) {
             val arcRadius = 56f
@@ -550,120 +668,20 @@ private fun DrawScope.drawCartoonTank(
             )
         }
 
-        // 포신
-        val barrelStart = Offset(
-            turretCenter.x + cos(barrelRad) * (6f - recoil * 0.5f),
-            turretCenter.y + sin(barrelRad) * (6f - recoil * 0.5f)
-        )
-        val barrelEnd = Offset(
-            turretCenter.x + cos(barrelRad) * (36f - recoil),
-            turretCenter.y + sin(barrelRad) * (36f - recoil)
-        )
-        drawLine(
-            color = DeepNavyOutline,
-            start = barrelStart,
-            end = barrelEnd,
-            strokeWidth = 14.5f,
-            cap = StrokeCap.Round
-        )
-        drawLine(
-            color = tank.accentColor,
-            start = barrelStart,
-            end = barrelEnd,
-            strokeWidth = 9f,
-            cap = StrokeCap.Round
-        )
-        drawCircle(color = DeepNavyOutline, radius = 7.5f, center = barrelEnd)
-        drawCircle(color = Color(0xFFFF9F1C), radius = 4.8f, center = barrelEnd)
-
-        // 돔 터렛 & 하이라이트
-        drawCircle(color = DeepNavyOutline, radius = 17f, center = turretCenter)
-        drawCircle(color = tank.primaryColor, radius = 14f, center = turretCenter)
-        drawCircle(
-            color = Color.White.copy(alpha = 0.3f),
-            radius = 5f,
-            center = Offset(turretCenter.x - 4f, turretCenter.y - 6f)
-        )
-
-        // 차체 몸통
-        drawRoundRect(
-            color = DeepNavyOutline,
-            topLeft = Offset(tank.x - 25f, tank.y - 23f),
-            size = Size(50f, 16f),
-            cornerRadius = CornerRadius(8f, 8f)
-        )
-        drawRoundRect(
-            color = tank.primaryColor,
-            topLeft = Offset(tank.x - 22f, tank.y - 20f),
-            size = Size(44f, 11f),
-            cornerRadius = CornerRadius(6f, 6f)
-        )
-
-        // 무한궤도 바퀴
-        drawRoundRect(
-            color = DeepNavyOutline,
-            topLeft = Offset(tank.x - 27f, tank.y - 11f),
-            size = Size(54f, 12f),
-            cornerRadius = CornerRadius(6f, 6f)
-        )
-        drawRoundRect(
-            color = Color(0xFF4A5759),
-            topLeft = Offset(tank.x - 24f, tank.y - 8.5f),
-            size = Size(48f, 7f),
-            cornerRadius = CornerRadius(4f, 4f)
-        )
-        listOf(-15f, 0f, 15f).forEach { wx ->
-            drawCircle(color = Color(0xFFDAD7CD), radius = 2.8f, center = Offset(tank.x + wx, tank.y - 5f))
-        }
-
-        // 큰 카툰 눈 표정 (일반 / 차징 / 피격 X-눈 / 승리)
-        val eyeOffsetX = if (tank.facingRight) 5.5f else -5.5f
-        val pupilOffsetX = if (tank.facingRight) 2.2f else -2.2f
-        val eyeCenter = Offset(turretCenter.x + eyeOffsetX, turretCenter.y - 2f)
-        drawCircle(color = DeepNavyOutline, radius = 7.2f, center = eyeCenter)
-        drawCircle(color = Color.White, radius = 5.8f, center = eyeCenter)
-
-        when (tank.expression) {
-            TankExpression.DIZZY -> {
-                // 레퍼런스 이미지처럼 피격 시 굵은 X 눈 표정
-                drawLine(
-                    color = DeepNavyOutline,
-                    start = Offset(eyeCenter.x - 3.2f, eyeCenter.y - 3.2f),
-                    end = Offset(eyeCenter.x + 3.2f, eyeCenter.y + 3.2f),
-                    strokeWidth = 2.5f,
-                    cap = StrokeCap.Round
-                )
-                drawLine(
-                    color = DeepNavyOutline,
-                    start = Offset(eyeCenter.x + 3.2f, eyeCenter.y - 3.2f),
-                    end = Offset(eyeCenter.x - 3.2f, eyeCenter.y + 3.2f),
-                    strokeWidth = 2.5f,
-                    cap = StrokeCap.Round
-                )
-            }
-            TankExpression.HAPPY -> {
-                drawArc(
-                    color = DeepNavyOutline,
-                    startAngle = 180f,
-                    sweepAngle = 180f,
-                    useCenter = false,
-                    topLeft = Offset(eyeCenter.x - 3.5f, eyeCenter.y - 2f),
-                    size = Size(7f, 5f),
-                    style = Stroke(width = 2.2f, cap = StrokeCap.Round)
-                )
-            }
-            TankExpression.CHARGING, TankExpression.NORMAL -> {
-                drawCircle(
-                    color = DeepNavyOutline,
-                    radius = if (tank.expression == TankExpression.CHARGING) 2.1f else 2.9f,
-                    center = Offset(eyeCenter.x + pupilOffsetX, eyeCenter.y)
-                )
-                drawCircle(
-                    color = Color.White,
-                    radius = 1.1f,
-                    center = Offset(eyeCenter.x + pupilOffsetX - 0.8f, eyeCenter.y - 1.0f)
-                )
-            }
+        // 7종 포탄별 전용 커스텀 탱크 렌더링 (포신 · 터렛 · 장식 · 차체 · 바퀴 · 표정)
+        withTransform({
+            translate(left = tank.x, top = tank.y)
+        }) {
+            drawThemedTankBody(
+                tankType = tank.tankType,
+                aimAngleDeg = tank.aimAngleDeg,
+                facingRight = tank.facingRight,
+                recoil = recoil,
+                expression = tank.expression,
+                animTime = animTime,
+                hasShield = tank.hasShield,
+                poisonTurns = tank.poisonTurns
+            )
         }
     }
 
@@ -708,6 +726,48 @@ private fun DrawScope.drawCartoonTank(
         }
         drawPath(path = arrowPath, color = PrimaryGold)
         drawPath(path = arrowPath, color = DeepNavyOutline, style = Stroke(width = 2.4f))
+
+        // 활성 플레이어 탱크 바로 아래 실시간 연료 게이지 바 + 잔량 % 표시
+        if (!tank.isAi) {
+            val fuelFrac = (tank.fuel / tank.maxFuel.coerceAtLeast(1f)).coerceIn(0f, 1f)
+            val fuelPct = (fuelFrac * 100f).roundToInt()
+            val fuelBarW = 62f
+            val fuelBarH = 7f
+            val fuelLeft = tank.x - fuelBarW * 0.5f
+            val fuelTop = tank.y + 9f
+            val fuelColor = when {
+                fuelFrac > 0.35f -> SuccessGreen
+                fuelFrac > 0.15f -> WarningAmber
+                else -> DangerRed
+            }
+
+            drawRoundRect(
+                color = DeepNavyOutline,
+                topLeft = Offset(fuelLeft - 2f, fuelTop - 2f),
+                size = Size(fuelBarW + 4f, fuelBarH + 4f),
+                cornerRadius = CornerRadius(4f, 4f)
+            )
+            drawRoundRect(
+                color = Color(0xFF0B1320),
+                topLeft = Offset(fuelLeft, fuelTop),
+                size = Size(fuelBarW, fuelBarH),
+                cornerRadius = CornerRadius(3f, 3f)
+            )
+            if (fuelFrac > 0f) {
+                drawRoundRect(
+                    color = fuelColor,
+                    topLeft = Offset(fuelLeft, fuelTop),
+                    size = Size(fuelBarW * fuelFrac, fuelBarH),
+                    cornerRadius = CornerRadius(3f, 3f)
+                )
+            }
+            val fuelLabel = if (fuelPct > 0) "연료 $fuelPct%" else "연료 0%"
+            fuelTextPaint.color = if (fuelPct > 0) android.graphics.Color.WHITE else DangerRed.toArgb()
+            drawIntoCanvas { canvas ->
+                canvas.nativeCanvas.drawText(fuelLabel, tank.x, fuelTop + fuelBarH + 13f, fuelStrokePaint)
+                canvas.nativeCanvas.drawText(fuelLabel, tank.x, fuelTop + fuelBarH + 13f, fuelTextPaint)
+            }
+        }
     }
 }
 

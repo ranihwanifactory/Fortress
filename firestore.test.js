@@ -21,6 +21,8 @@ function validProfilePayload(uid, nickname, ts) {
   return {
     userId: uid,
     nickname,
+    selectedTank: "CLASSIC",
+    invitePushEnabled: true,
     listedInRanking: true,
     level: 1,
     xp: 0,
@@ -45,9 +47,11 @@ function validRoomPayload(hostUid, ts) {
     hostUid,
     hostName: "블루캡틴",
     hostLevel: 3,
+    hostTank: "AQUA_HYDRO",
     guestUid: "",
     guestName: "",
     guestLevel: 0,
+    guestTank: "",
     guestReady: false,
     participantUids: [hostUid],
     mapTheme: "GRASSLAND",
@@ -139,10 +143,28 @@ test("PlayerProfile: owner create/update/level-up & leaderboard query succeed; c
     )
   );
 
-  // Update nickname
+  // Update nickname, selectedTank & invitePushEnabled
   await assertSucceeds(
     aliceDb.collection("player_profiles").doc(ALICE_UID).update({
       nickname: "에이스전차",
+      selectedTank: "POOP_KING",
+      invitePushEnabled: false,
+      updatedAt: updated,
+    })
+  );
+
+  // Reject non-boolean invitePushEnabled
+  await assertFails(
+    aliceDb.collection("player_profiles").doc(ALICE_UID).update({
+      invitePushEnabled: "yes",
+      updatedAt: updated,
+    })
+  );
+
+  // Reject invalid tank enum
+  await assertFails(
+    aliceDb.collection("player_profiles").doc(ALICE_UID).update({
+      selectedTank: "HACKED_TANK",
       updatedAt: updated,
     })
   );
@@ -211,12 +233,13 @@ test("MatchRoom: full multiplayer lifecycle (create, list lobby, join, ready, st
   );
   await assertFails(bobDb.collection("match_rooms").get());
 
-  // 3. Guest joins room
+  // 3. Guest joins room with selected tank
   await assertSucceeds(
     bobDb.collection("match_rooms").doc("room_1").update({
       guestUid: BOB_UID,
       guestName: "레드불독",
       guestLevel: 2,
+      guestTank: "TOXIC_CHEMIST",
       guestReady: false,
       participantUids: [ALICE_UID, BOB_UID],
       updatedAt: t1,

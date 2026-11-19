@@ -5,6 +5,7 @@ import com.example.R
 import com.example.game.model.Difficulty
 import com.example.game.model.ItemType
 import com.example.game.model.MapTheme
+import com.example.game.model.TankType
 import com.example.game.model.WeaponType
 import com.google.firebase.Firebase
 import com.google.firebase.auth.FirebaseAuth
@@ -49,7 +50,10 @@ class OnlineGameRepository(
     // 1. 플레이어 프로필, 레벨업 & 글로벌 랭킹
     // -------------------------------------------------------------------------
 
-    suspend fun ensurePlayerProfile(defaultNickname: String): Result<PlayerProfile> {
+    suspend fun ensurePlayerProfile(
+        defaultNickname: String,
+        initialPushEnabled: Boolean = false
+    ): Result<PlayerProfile> {
         val uid = auth.currentUser?.uid
         if (uid.isNullOrBlank()) {
             return Result.failure(IllegalStateException("Not authenticated"))
@@ -69,6 +73,8 @@ class OnlineGameRepository(
             val payload = mapOf(
                 "userId" to uid,
                 "nickname" to safeNick,
+                "selectedTank" to TankType.CLASSIC.name,
+                "invitePushEnabled" to initialPushEnabled,
                 "listedInRanking" to true,
                 "level" to 1L,
                 "xp" to 0L,
@@ -85,7 +91,15 @@ class OnlineGameRepository(
                 "updatedAt" to FieldValue.serverTimestamp()
             )
             docRef.set(payload).await()
-            Result.success(PlayerProfile(id = uid, userId = uid, nickname = safeNick))
+            Result.success(
+                PlayerProfile(
+                    id = uid,
+                    userId = uid,
+                    nickname = safeNick,
+                    selectedTank = TankType.CLASSIC.name,
+                    invitePushEnabled = initialPushEnabled
+                )
+            )
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
@@ -150,6 +164,48 @@ class OnlineGameRepository(
                 .update(
                     mapOf(
                         "nickname" to sanitized,
+                        "updatedAt" to FieldValue.serverTimestamp()
+                    )
+                ).await()
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.UPDATE, path)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun updateSelectedTank(tankType: TankType): Result<Unit> {
+        var path = "$COL_PROFILES/unknown"
+        return try {
+            val uid = requireUserId()
+            path = "$COL_PROFILES/$uid"
+            db.collection(COL_PROFILES).document(uid)
+                .update(
+                    mapOf(
+                        "selectedTank" to tankType.name,
+                        "updatedAt" to FieldValue.serverTimestamp()
+                    )
+                ).await()
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.UPDATE, path)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun updateInvitePushEnabled(enabled: Boolean): Result<Unit> {
+        var path = "$COL_PROFILES/unknown"
+        return try {
+            val uid = requireUserId()
+            path = "$COL_PROFILES/$uid"
+            db.collection(COL_PROFILES).document(uid)
+                .update(
+                    mapOf(
+                        "invitePushEnabled" to enabled,
                         "updatedAt" to FieldValue.serverTimestamp()
                     )
                 ).await()
@@ -272,15 +328,18 @@ class OnlineGameRepository(
             val seed = Random.nextLong(1000L, 999_999_999L)
             val initWind = Random.nextInt(-6, 7).toLong()
 
+            val hostTankName = hostProfile.parsedTankType().name
             val payload = mapOf(
                 "roomCode" to code,
                 "roomTitle" to safeTitle,
                 "hostUid" to uid,
                 "hostName" to sanitizeNickname(hostProfile.nickname),
                 "hostLevel" to hostProfile.level.coerceIn(1L, 999L),
+                "hostTank" to hostTankName,
                 "guestUid" to "",
                 "guestName" to "",
                 "guestLevel" to 0L,
+                "guestTank" to "",
                 "guestReady" to false,
                 "participantUids" to listOf(uid),
                 "mapTheme" to mapTheme.name,
@@ -311,6 +370,7 @@ class OnlineGameRepository(
                     hostUid = uid,
                     hostName = sanitizeNickname(hostProfile.nickname),
                     hostLevel = hostProfile.level,
+                    hostTank = hostTankName,
                     participantUids = listOf(uid),
                     mapTheme = mapTheme.name,
                     terrainSeed = seed,
@@ -346,11 +406,13 @@ class OnlineGameRepository(
                 return Result.failure(IllegalStateException("이미 시작되었거나 가득 찬 방입니다."))
             }
 
+            val guestTankName = guestProfile.parsedTankType().name
             docRef.update(
                 mapOf(
                     "guestUid" to uid,
                     "guestName" to sanitizeNickname(guestProfile.nickname),
                     "guestLevel" to guestProfile.level.coerceIn(1L, 999L),
+                    "guestTank" to guestTankName,
                     "guestReady" to false,
                     "participantUids" to listOf(room.hostUid, uid),
                     "updatedAt" to FieldValue.serverTimestamp()
@@ -362,6 +424,7 @@ class OnlineGameRepository(
                     guestUid = uid,
                     guestName = sanitizeNickname(guestProfile.nickname),
                     guestLevel = guestProfile.level,
+                    guestTank = guestTankName,
                     guestReady = false,
                     participantUids = listOf(room.hostUid, uid)
                 )
@@ -465,6 +528,32 @@ class OnlineGameRepository(
         }
     }
 
+    suspend fun updateRoomTank(room: MatchRoom, tankType: TankType): Result<Unit> {
+        val path = "$COL_ROOMS/${room.id}"
+        return try {
+            val uid = requireUserId()
+            if (room.status != "WAITING") return Result.success(Unit)
+            val field = when (uid) {
+                room.hostUid -> "hostTank"
+                room.guestUid -> "guestTank"
+                else -> return Result.success(Unit)
+            }
+            db.collection(COL_ROOMS).document(room.id)
+                .update(
+                    mapOf(
+                        field to tankType.name,
+                        "updatedAt" to FieldValue.serverTimestamp()
+                    )
+                ).await()
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            handleFirestoreError(e, OperationType.UPDATE, path)
+            Result.failure(e)
+        }
+    }
+
     suspend fun leaveOrCloseWaitingRoom(room: MatchRoom): Result<Unit> {
         val path = "$COL_ROOMS/${room.id}"
         return try {
@@ -478,6 +567,7 @@ class OnlineGameRepository(
                         "guestUid" to "",
                         "guestName" to "",
                         "guestLevel" to 0L,
+                        "guestTank" to "",
                         "guestReady" to false,
                         "participantUids" to listOf(room.hostUid),
                         "updatedAt" to FieldValue.serverTimestamp()

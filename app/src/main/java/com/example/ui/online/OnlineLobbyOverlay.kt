@@ -1,5 +1,7 @@
 package com.example.ui.online
 
+import android.graphics.Bitmap
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -25,14 +27,18 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AddCircle
+import androidx.compose.material.icons.rounded.CameraAlt
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.EmojiEvents
 import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.Mail
+import androidx.compose.material.icons.rounded.NotificationsActive
+import androidx.compose.material.icons.rounded.NotificationsOff
 import androidx.compose.material.icons.rounded.Send
 import androidx.compose.material.icons.rounded.VpnKey
 import androidx.compose.material3.Button
@@ -44,8 +50,11 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -54,6 +63,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -65,6 +75,8 @@ import com.example.firebase.PlayerProfile
 import com.example.firebase.RoomInvite
 import com.example.game.model.AppLanguage
 import com.example.game.model.MapTheme
+import com.example.game.model.TankType
+import com.example.ui.tank.TankAvatar
 import com.example.ui.theme.DangerRed
 import com.example.ui.theme.DeepNavyOutline
 import com.example.ui.theme.FredokaFontFamily
@@ -86,6 +98,8 @@ fun OnlineLobbyOverlay(
     initialTab: LobbyTab,
     language: AppLanguage,
     currentUserId: String,
+    selectedTank: TankType,
+    invitePushEnabled: Boolean,
     myProfileState: OnlineUiState<PlayerProfile?>,
     leaderboardState: OnlineUiState<List<PlayerProfile>>,
     waitingRoomsState: OnlineUiState<List<MatchRoom>>,
@@ -99,20 +113,38 @@ fun OnlineLobbyOverlay(
     onDeclineInvite: (RoomInvite) -> Unit,
     onInvitePlayer: (PlayerProfile) -> Unit,
     onUpdateNickname: (String) -> Unit,
+    onOpenTankSelector: () -> Unit,
+    onToggleInvitePush: (Boolean) -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val context = LocalContext.current
     val isKo = language == AppLanguage.KO
     var selectedTab by remember(initialTab) { mutableStateOf(initialTab) }
     val pendingInviteCount = (incomingInvitesState as? OnlineUiState.Success)?.data?.size ?: 0
+    var capturedSnapshot by remember { mutableStateOf<Pair<Bitmap, Boolean>?>(null) }
+    var captureStatusMessage by remember { mutableStateOf<String?>(null) }
 
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .background(Color(0xD908101C))
-            .windowInsetsPadding(WindowInsets.safeDrawing)
-            .padding(14.dp)
-    ) {
+    DisposableEffect(Unit) {
+        onDispose {
+            capturedSnapshot?.first?.recycle()
+        }
+    }
+
+    BackHandler(enabled = capturedSnapshot != null) {
+        capturedSnapshot?.first?.recycle()
+        capturedSnapshot = null
+        captureStatusMessage = null
+    }
+
+    Box(modifier = modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(Color(0xD908101C))
+                .windowInsetsPadding(WindowInsets.safeDrawing)
+                .padding(14.dp)
+        ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -205,8 +237,10 @@ fun OnlineLobbyOverlay(
                     LobbyTab.INVITES -> InvitesTabContent(
                         isKo = isKo,
                         language = language,
+                        invitePushEnabled = invitePushEnabled,
                         incomingInvitesState = incomingInvitesState,
                         isBusy = isBusy,
+                        onToggleInvitePush = onToggleInvitePush,
                         onAcceptInvite = onAcceptInvite,
                         onDeclineInvite = onDeclineInvite
                     )
@@ -214,14 +248,68 @@ fun OnlineLobbyOverlay(
                         isKo = isKo,
                         language = language,
                         currentUserId = currentUserId,
+                        selectedTank = selectedTank,
                         myProfileState = myProfileState,
                         leaderboardState = leaderboardState,
                         isBusy = isBusy,
                         onInvitePlayer = onInvitePlayer,
-                        onUpdateNickname = onUpdateNickname
+                        onUpdateNickname = onUpdateNickname,
+                        onOpenTankSelector = onOpenTankSelector,
+                        onCaptureRanking = { myProfile, myRank, topPlayers ->
+                            capturedSnapshot?.first?.recycle()
+                            val profileWithTank = myProfile?.copy(selectedTank = selectedTank.name)
+                            val bitmap = renderRankingSnapshotBitmap(
+                                context = context,
+                                language = language,
+                                myProfile = profileWithTank,
+                                myRank = myRank,
+                                topPlayers = topPlayers
+                            )
+                            capturedSnapshot = bitmap to (myRank == 1)
+                            captureStatusMessage = null
+                        }
                     )
                 }
             }
+        }
+        }
+
+        val preview = capturedSnapshot
+        if (preview != null) {
+            RankingCapturePreviewDialog(
+                bitmap = preview.first,
+                isTopOne = preview.second,
+                language = language,
+                statusMessage = captureStatusMessage,
+                onSaveToGallery = {
+                    val result = saveRankingBitmapToGallery(
+                        context = context,
+                        bitmap = preview.first,
+                        isTopOne = preview.second,
+                        language = language
+                    )
+                    captureStatusMessage = result.getOrElse { err ->
+                        if (isKo) "저장 실패: ${err.localizedMessage ?: "알 수 없는 오류"}"
+                        else "Save failed: ${err.localizedMessage ?: "Unknown error"}"
+                    }
+                },
+                onShareImage = {
+                    val result = shareRankingBitmap(
+                        context = context,
+                        bitmap = preview.first,
+                        isTopOne = preview.second,
+                        language = language
+                    )
+                    if (result.isFailure) {
+                        captureStatusMessage = if (isKo) "공유할 앱을 찾을 수 없습니다." else "No app available to share."
+                    }
+                },
+                onDismiss = {
+                    preview.first.recycle()
+                    capturedSnapshot = null
+                    captureStatusMessage = null
+                }
+            )
         }
     }
 }
@@ -502,72 +590,140 @@ private fun RoomsTabContent(
 private fun InvitesTabContent(
     isKo: Boolean,
     language: AppLanguage,
+    invitePushEnabled: Boolean,
     incomingInvitesState: OnlineUiState<List<RoomInvite>>,
     isBusy: Boolean,
+    onToggleInvitePush: (Boolean) -> Unit,
     onAcceptInvite: (RoomInvite) -> Unit,
     onDeclineInvite: (RoomInvite) -> Unit
 ) {
-    when (incomingInvitesState) {
-        is OnlineUiState.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator(color = PrimaryGold)
-        }
-        is OnlineUiState.Error -> Text(incomingInvitesState.message, color = DangerRed)
-        is OnlineUiState.Success -> {
-            val invites = incomingInvitesState.data
-            if (invites.isEmpty()) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        // 사용자 선택형 푸시 알림 수신 설정 배너
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(14.dp))
+                .background(if (invitePushEnabled) Color(0xFF173152) else Color(0xFF102036))
+                .border(
+                    width = 1.5.dp,
+                    color = if (invitePushEnabled) PrimaryGold.copy(alpha = 0.75f) else Color(0xFF284369),
+                    shape = RoundedCornerShape(14.dp)
+                )
+                .padding(horizontal = 14.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Row(
+                modifier = Modifier.weight(1f),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Icon(
+                    imageVector = if (invitePushEnabled) {
+                        Icons.Rounded.NotificationsActive
+                    } else {
+                        Icons.Rounded.NotificationsOff
+                    },
+                    contentDescription = if (isKo) "초대 푸시 알림 상태" else "Invite Push Status",
+                    tint = if (invitePushEnabled) PrimaryGold else TextMuted,
+                    modifier = Modifier.size(22.dp)
+                )
+                Column {
                     Text(
-                        text = if (isKo) "받은 대전 초대가 없습니다.\n랭킹 탭에서 다른 플레이어를 초대하거나 초대 코드를 공유해 보세요!" else "No pending invites.",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = TextMuted
+                        text = if (isKo) "친구 초대 푸시 알림 받기" else "Receive Friend Invite Push Alerts",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    )
+                    Text(
+                        text = if (invitePushEnabled) {
+                            if (isKo) "켜짐 · 친구가 초대하면 푸시 알림과 상단 배너로 바로 알려드려요!" else "ON · Instant push & top banner alerts when invited!"
+                        } else {
+                            if (isKo) "꺼짐 · 원할 때 스위치를 켜면 초대 푸시 알림을 받을 수 있어요." else "OFF · Turn on anytime to get instant invite notifications."
+                        },
+                        style = MaterialTheme.typography.labelMedium,
+                        color = if (invitePushEnabled) Color(0xFF90E0EF) else TextMuted
                     )
                 }
-            } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    items(invites, key = { it.id }) { invite ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(16.dp))
-                                .background(Color(0xFF162C49))
-                                .border(2.dp, PrimaryGold, RoundedCornerShape(16.dp))
-                                .padding(14.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+            }
+            Switch(
+                checked = invitePushEnabled,
+                onCheckedChange = onToggleInvitePush,
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = DeepNavyOutline,
+                    checkedTrackColor = PrimaryGold
+                ),
+                modifier = Modifier.testTag("invites_tab_push_switch")
+            )
+        }
+
+        Box(modifier = Modifier.weight(1f).fillMaxWidth()) {
+            when (incomingInvitesState) {
+                is OnlineUiState.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = PrimaryGold)
+                }
+                is OnlineUiState.Error -> Text(incomingInvitesState.message, color = DangerRed)
+                is OnlineUiState.Success -> {
+                    val invites = incomingInvitesState.data
+                    if (invites.isEmpty()) {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Text(
+                                text = if (isKo) "받은 대전 초대가 없습니다.\n랭킹 탭에서 다른 플레이어를 초대하거나 초대 코드를 공유해 보세요!" else "No pending invites.",
+                                style = MaterialTheme.typography.bodyLarge,
+                                color = TextMuted
+                            )
+                        }
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = "${invite.fromName}님의 1:1 대전 초대!",
-                                    style = MaterialTheme.typography.titleMedium,
-                                    color = PrimaryGold
-                                )
-                                Text(
-                                    text = "${invite.roomTitle} · ${invite.parsedMapTheme().label(language)} · 코드 #${invite.roomCode}",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = Color.White
-                                )
-                            }
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Button(
-                                    onClick = { onAcceptInvite(invite) },
-                                    enabled = !isBusy,
-                                    colors = ButtonDefaults.buttonColors(containerColor = SuccessGreen),
-                                    modifier = Modifier.height(48.dp)
+                            items(invites, key = { it.id }) { invite ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(16.dp))
+                                        .background(Color(0xFF162C49))
+                                        .border(2.dp, PrimaryGold, RoundedCornerShape(16.dp))
+                                        .padding(14.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Icon(Icons.Rounded.Check, contentDescription = null, tint = DeepNavyOutline)
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(if (isKo) "수락" else "Accept", color = DeepNavyOutline, style = MaterialTheme.typography.titleMedium)
-                                }
-                                Button(
-                                    onClick = { onDeclineInvite(invite) },
-                                    enabled = !isBusy,
-                                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3D4B63)),
-                                    modifier = Modifier.height(48.dp)
-                                ) {
-                                    Text(if (isKo) "거절" else "Decline", color = Color.White, style = MaterialTheme.typography.titleMedium)
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "${invite.fromName}님의 1:1 대전 초대!",
+                                            style = MaterialTheme.typography.titleMedium,
+                                            color = PrimaryGold
+                                        )
+                                        Text(
+                                            text = "${invite.roomTitle} · ${invite.parsedMapTheme().label(language)} · 코드 #${invite.roomCode}",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = Color.White
+                                        )
+                                    }
+                                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                        Button(
+                                            onClick = { onAcceptInvite(invite) },
+                                            enabled = !isBusy,
+                                            colors = ButtonDefaults.buttonColors(containerColor = SuccessGreen),
+                                            modifier = Modifier.height(48.dp)
+                                        ) {
+                                            Icon(Icons.Rounded.Check, contentDescription = null, tint = DeepNavyOutline)
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(if (isKo) "수락" else "Accept", color = DeepNavyOutline, style = MaterialTheme.typography.titleMedium)
+                                        }
+                                        Button(
+                                            onClick = { onDeclineInvite(invite) },
+                                            enabled = !isBusy,
+                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF3D4B63)),
+                                            modifier = Modifier.height(48.dp)
+                                        ) {
+                                            Text(if (isKo) "거절" else "Decline", color = Color.White, style = MaterialTheme.typography.titleMedium)
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -583,13 +739,19 @@ private fun RankingTabContent(
     isKo: Boolean,
     language: AppLanguage,
     currentUserId: String,
+    selectedTank: TankType,
     myProfileState: OnlineUiState<PlayerProfile?>,
     leaderboardState: OnlineUiState<List<PlayerProfile>>,
     isBusy: Boolean,
     onInvitePlayer: (PlayerProfile) -> Unit,
-    onUpdateNickname: (String) -> Unit
+    onUpdateNickname: (String) -> Unit,
+    onOpenTankSelector: () -> Unit,
+    onCaptureRanking: (PlayerProfile?, Int?, List<PlayerProfile>) -> Unit
 ) {
     val myProfile = (myProfileState as? OnlineUiState.Success)?.data
+    val rankedPlayers = (leaderboardState as? OnlineUiState.Success)?.data?.take(50).orEmpty()
+    val myRank = rankedPlayers.indexOfFirst { it.userId == currentUserId }.let { if (it >= 0) it + 1 else null }
+    val isTopOne = myRank == 1
     var editingNick by remember { mutableStateOf(false) }
     var nickDraft by remember(myProfile?.nickname) { mutableStateOf(myProfile?.nickname ?: "") }
 
@@ -597,28 +759,107 @@ private fun RankingTabContent(
         modifier = Modifier.fillMaxSize(),
         horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // 좌측: 내 지휘관 프로필 & 레벨/경험치 카드
+        // 좌측: 내 지휘관 프로필 + 전용 탱크 쇼케이스 + 레벨/경험치 + TOP 1 기념 캡쳐
         Column(
             modifier = Modifier
-                .weight(0.85f)
+                .weight(0.88f)
                 .fillMaxHeight()
                 .clip(RoundedCornerShape(18.dp))
-                .background(Color(0xFF102036))
+                .background(if (isTopOne) Color(0xFF1F1D14) else Color(0xFF102036))
                 .border(2.dp, PrimaryGold, RoundedCornerShape(18.dp))
-                .padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+                .padding(12.dp)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(7.dp)
         ) {
-            Text(
-                text = if (isKo) "내 지휘관 정보" else "My Commander",
-                style = MaterialTheme.typography.titleMedium,
-                color = PrimaryGold
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = if (isKo) "내 지휘관 프로필" else "My Commander",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = PrimaryGold
+                )
+                if (myRank != null) {
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(999.dp))
+                            .background(if (isTopOne) PrimaryGold else Color(0xFF233F66))
+                            .padding(horizontal = 9.dp, vertical = 3.dp)
+                    ) {
+                        Text(
+                            text = if (isTopOne) {
+                                if (isKo) "👑 TOP 1 챔피언!" else "👑 TOP 1!"
+                            } else {
+                                if (isKo) "현재 ${myRank}위" else "Rank #$myRank"
+                            },
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isTopOne) DeepNavyOutline else PrimaryGold
+                        )
+                    }
+                }
+            }
 
             if (myProfile == null) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = PrimaryGold)
                 }
             } else {
+                // 프로필 전용 내 탱크 스포트라이트 배너 (터치 시 탱크 교체)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(Color(0xFF152A47))
+                        .border(1.5.dp, selectedTank.trimColor, RoundedCornerShape(14.dp))
+                        .clickable { onOpenTankSelector() }
+                        .padding(horizontal = 10.dp, vertical = 7.dp)
+                        .testTag("profile_change_tank_button"),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    TankAvatar(
+                        tankType = selectedTank,
+                        size = 64.dp,
+                        showPedestal = true,
+                        highlighted = true
+                    )
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        Text(
+                            text = selectedTank.label(language),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = "${selectedTank.signatureWeapon.label(language)} · ${selectedTank.perk(language)}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = selectedTank.trimColor,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(PrimaryGold)
+                            .padding(horizontal = 8.dp, vertical = 5.dp)
+                    ) {
+                        Text(
+                            text = if (isKo) "교체" else "Swap",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = DeepNavyOutline
+                        )
+                    }
+                }
                 if (editingNick) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
@@ -727,10 +968,43 @@ private fun RankingTabContent(
                     style = MaterialTheme.typography.labelMedium,
                     color = TextMuted
                 )
+
+                Button(
+                    onClick = { onCaptureRanking(myProfile, myRank, rankedPlayers) },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (isTopOne) PrimaryGold else Color(0xFF214675)
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(48.dp)
+                        .testTag("capture_ranking_button")
+                ) {
+                    Icon(
+                        imageVector = if (isTopOne) Icons.Rounded.EmojiEvents else Icons.Rounded.CameraAlt,
+                        contentDescription = null,
+                        tint = if (isTopOne) DeepNavyOutline else PrimaryGold,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = when {
+                            isTopOne && isKo -> "TOP 1 달성 기념 이미지 캡쳐!"
+                            isTopOne -> "Capture TOP 1 Moment!"
+                            isKo -> "랭킹 순위 이미지 캡쳐"
+                            else -> "Capture Ranking Image"
+                        },
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = if (isTopOne) DeepNavyOutline else Color.White,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
             }
         }
 
-        // 우측: 실시간 글로벌 랭킹 보드 + 바로 초대
+        // 우측: 실시간 글로벌 랭킹 보드 + 바로 초대 + 빠른 캡쳐 버튼
         Column(
             modifier = Modifier
                 .weight(1.15f)
@@ -741,11 +1015,32 @@ private fun RankingTabContent(
                 .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Text(
-                text = if (isKo) "글로벌 랭킹 TOP 50 (유저를 눌러 바로 초대!)" else "Global Leaderboard (Invite Players)",
-                style = MaterialTheme.typography.titleMedium,
-                color = PrimaryGold
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = if (isKo) "글로벌 랭킹 TOP 50 (유저를 눌러 바로 초대!)" else "Global Leaderboard (Invite Players)",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = PrimaryGold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                IconButton(
+                    onClick = { onCaptureRanking(myProfile, myRank, rankedPlayers) },
+                    modifier = Modifier
+                        .size(48.dp)
+                        .testTag("leaderboard_capture_icon_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Rounded.CameraAlt,
+                        contentDescription = if (isKo) "랭킹 이미지 캡쳐" else "Capture Ranking",
+                        tint = PrimaryGold
+                    )
+                }
+            }
 
             when (leaderboardState) {
                 is OnlineUiState.Loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -788,7 +1083,7 @@ private fun RankingTabContent(
                                 ) {
                                     Box(
                                         modifier = Modifier
-                                            .size(30.dp)
+                                            .size(28.dp)
                                             .clip(CircleShape)
                                             .background(rankColor),
                                         contentAlignment = Alignment.Center
@@ -797,10 +1092,16 @@ private fun RankingTabContent(
                                             text = "$rank",
                                             fontFamily = FredokaFontFamily,
                                             fontWeight = FontWeight.Bold,
-                                            fontSize = 14.sp,
+                                            fontSize = 13.sp,
                                             color = if (rank <= 3) DeepNavyOutline else Color.White
                                         )
                                     }
+                                    val playerTank = if (isMe) selectedTank else player.parsedTankType()
+                                    TankAvatar(
+                                        tankType = playerTank,
+                                        size = 42.dp,
+                                        highlighted = rank == 1 || isMe
+                                    )
                                     Column(modifier = Modifier.weight(1f)) {
                                         Text(
                                             text = "${player.nickname} (Lv.${player.level})",
@@ -810,24 +1111,45 @@ private fun RankingTabContent(
                                             overflow = TextOverflow.Ellipsis
                                         )
                                         Text(
-                                            text = "${player.tier.label(language)} · ${player.rankPoints} RP · ${player.wins}승 ${player.losses}패 (${player.winRatePercent}%)",
+                                            text = "${playerTank.label(language)} · ${player.rankPoints} RP · ${player.wins}승 ${player.losses}패 (${player.winRatePercent}%)",
                                             style = MaterialTheme.typography.labelMedium,
-                                            color = player.tier.badgeColor
+                                            color = player.tier.badgeColor,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
                                         )
                                     }
                                 }
 
                                 if (!isMe) {
-                                    Button(
-                                        onClick = { onInvitePlayer(player) },
-                                        enabled = !isBusy,
-                                        colors = ButtonDefaults.buttonColors(containerColor = PlayerBlue),
-                                        shape = RoundedCornerShape(10.dp),
-                                        modifier = Modifier.height(40.dp)
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(5.dp)
                                     ) {
-                                        Icon(Icons.Rounded.Send, contentDescription = null, modifier = Modifier.size(15.dp))
-                                        Spacer(modifier = Modifier.width(4.dp))
-                                        Text(if (isKo) "초대" else "Invite", style = MaterialTheme.typography.labelMedium, color = Color.White)
+                                        Icon(
+                                            imageVector = if (player.invitePushEnabled) {
+                                                Icons.Rounded.NotificationsActive
+                                            } else {
+                                                Icons.Rounded.NotificationsOff
+                                            },
+                                            contentDescription = if (player.invitePushEnabled) {
+                                                if (isKo) "푸시 알림 켜짐" else "Push alerts ON"
+                                            } else {
+                                                if (isKo) "푸시 알림 꺼짐" else "Push alerts OFF"
+                                            },
+                                            tint = if (player.invitePushEnabled) PrimaryGold else TextMuted.copy(alpha = 0.6f),
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Button(
+                                            onClick = { onInvitePlayer(player) },
+                                            enabled = !isBusy,
+                                            colors = ButtonDefaults.buttonColors(containerColor = PlayerBlue),
+                                            shape = RoundedCornerShape(10.dp),
+                                            modifier = Modifier.height(40.dp)
+                                        ) {
+                                            Icon(Icons.Rounded.Send, contentDescription = null, modifier = Modifier.size(15.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text(if (isKo) "초대" else "Invite", style = MaterialTheme.typography.labelMedium, color = Color.White)
+                                        }
                                     }
                                 } else {
                                     Text(

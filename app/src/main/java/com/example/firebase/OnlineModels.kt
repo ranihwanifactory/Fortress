@@ -6,6 +6,7 @@ import com.example.game.model.AppLanguage
 import com.example.game.model.Difficulty
 import com.example.game.model.ItemType
 import com.example.game.model.MapTheme
+import com.example.game.model.TankType
 import com.example.game.model.WeaponType
 import com.google.firebase.Timestamp
 import com.google.firebase.firestore.DocumentId
@@ -41,6 +42,8 @@ data class PlayerProfile(
     @DocumentId val id: String = "",
     val userId: String = "",
     val nickname: String = "전차병",
+    val selectedTank: String = TankType.CLASSIC.name,
+    val invitePushEnabled: Boolean = true,
     val listedInRanking: Boolean = true,
     val level: Long = 1L,
     val xp: Long = 0L,
@@ -56,6 +59,8 @@ data class PlayerProfile(
     @ServerTimestamp val createdAt: Timestamp? = null,
     @ServerTimestamp val updatedAt: Timestamp? = null
 ) {
+    fun parsedTankType(): TankType = TankType.fromNameOrDefault(selectedTank)
+
     val winRatePercent: Int
         get() {
             val total = wins + losses
@@ -169,9 +174,11 @@ data class MatchRoom(
     val hostUid: String = "",
     val hostName: String = "",
     val hostLevel: Long = 1L,
+    val hostTank: String = TankType.CLASSIC.name,
     val guestUid: String = "",
     val guestName: String = "",
     val guestLevel: Long = 0L,
+    val guestTank: String = "",
     val guestReady: Boolean = false,
     val participantUids: List<String> = emptyList(),
     val mapTheme: String = MapTheme.GRASSLAND.name,
@@ -193,6 +200,10 @@ data class MatchRoom(
     @ServerTimestamp val createdAt: Timestamp? = null,
     @ServerTimestamp val updatedAt: Timestamp? = null
 ) {
+    fun parsedHostTank(): TankType = TankType.fromNameOrDefault(hostTank)
+
+    fun parsedGuestTank(): TankType = TankType.fromNameOrDefault(guestTank)
+
     fun parsedMapTheme(): MapTheme =
         MapTheme.entries.firstOrNull { it.name == mapTheme } ?: MapTheme.GRASSLAND
 

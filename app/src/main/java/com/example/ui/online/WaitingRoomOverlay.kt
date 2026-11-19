@@ -58,6 +58,8 @@ import com.example.firebase.OnlineUiState
 import com.example.firebase.PlayerProfile
 import com.example.game.model.AppLanguage
 import com.example.game.model.MapTheme
+import com.example.game.model.TankType
+import com.example.ui.tank.TankAvatar
 import com.example.ui.theme.DeepNavyOutline
 import com.example.ui.theme.EnemyCoral
 import com.example.ui.theme.FredokaFontFamily
@@ -80,6 +82,7 @@ fun WaitingRoomOverlay(
     onToggleReady: () -> Unit,
     onStartMatch: () -> Unit,
     onInvitePlayer: (PlayerProfile) -> Unit,
+    onOpenTankSelector: () -> Unit,
     onLeaveRoom: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -205,19 +208,23 @@ fun WaitingRoomOverlay(
                 )
             }
 
-            // 중앙: 1P 방장 vs 2P 도전자 카드
+            // 중앙: 1P 방장 vs 2P 도전자 카드 (각자 선택한 탱크 일러스트 대면 표시!)
             Row(
                 modifier = Modifier.weight(1f).fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(14.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 PlayerSlotCard(
-                    roleLabel = if (isKo) "1P 방장 (블루)" else "1P HOST (BLUE)",
+                    roleLabel = if (isKo) "1P 방장" else "1P HOST",
                     name = room.hostName,
                     level = room.hostLevel,
+                    tankType = room.parsedHostTank(),
+                    facingRight = true,
+                    language = language,
                     accentColor = PlayerBlue,
                     statusBadge = if (isKo) "방장 준비 완료" else "HOST READY",
                     badgeColor = PrimaryGold,
+                    onChangeTank = if (isHost) onOpenTankSelector else null,
                     modifier = Modifier.weight(1f)
                 )
 
@@ -231,9 +238,12 @@ fun WaitingRoomOverlay(
 
                 if (hasGuest) {
                     PlayerSlotCard(
-                        roleLabel = if (isKo) "2P 도전자 (레드)" else "2P GUEST (RED)",
+                        roleLabel = if (isKo) "2P 도전자" else "2P GUEST",
                         name = room.guestName,
                         level = room.guestLevel,
+                        tankType = room.parsedGuestTank(),
+                        facingRight = false,
+                        language = language,
                         accentColor = EnemyCoral,
                         statusBadge = if (room.guestReady) {
                             if (isKo) "준비 완료!" else "READY!"
@@ -241,6 +251,7 @@ fun WaitingRoomOverlay(
                             if (isKo) "준비 대기 중…" else "NOT READY"
                         },
                         badgeColor = if (room.guestReady) SuccessGreen else Color(0xFF495057),
+                        onChangeTank = if (!isHost) onOpenTankSelector else null,
                         modifier = Modifier.weight(1f)
                     )
                 } else {
@@ -394,49 +405,93 @@ private fun PlayerSlotCard(
     roleLabel: String,
     name: String,
     level: Long,
+    tankType: TankType,
+    facingRight: Boolean,
+    language: AppLanguage,
     accentColor: Color,
     statusBadge: String,
     badgeColor: Color,
+    onChangeTank: (() -> Unit)?,
     modifier: Modifier = Modifier
 ) {
-    Column(
+    val isKo = language == AppLanguage.KO
+    Row(
         modifier = modifier
             .height(126.dp)
             .clip(RoundedCornerShape(18.dp))
             .background(Color(0xFF142842))
             .border(3.dp, accentColor, RoundedCornerShape(18.dp))
-            .padding(14.dp),
-        verticalArrangement = Arrangement.SpaceBetween
+            .padding(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        Text(text = roleLabel, style = MaterialTheme.typography.labelMedium, color = accentColor)
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        TankAvatar(
+            tankType = tankType,
+            size = 76.dp,
+            facingRight = facingRight,
+            showPedestal = true,
+            highlighted = true,
+            modifier = if (onChangeTank != null) Modifier.clickable { onChangeTank() } else Modifier
+        )
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(5.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(text = roleLabel, style = MaterialTheme.typography.labelMedium, color = accentColor)
+                if (onChangeTank != null) {
+                    Text(
+                        text = if (isKo) "탱크 교체" else "Swap",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = PrimaryGold,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(Color(0xFF23395B))
+                            .clickable { onChangeTank() }
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                    )
+                }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Box(
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(7.dp))
+                        .background(PrimaryGold)
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                ) {
+                    Text(
+                        text = "LV.$level",
+                        fontFamily = FredokaFontFamily,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 12.sp,
+                        color = DeepNavyOutline
+                    )
+                }
+                Text(text = name, style = MaterialTheme.typography.titleMedium, color = Color.White, maxLines = 1)
+            }
+            Text(
+                text = "${tankType.label(language)} (${tankType.signatureWeapon.label(language)})",
+                style = MaterialTheme.typography.labelSmall,
+                color = tankType.trimColor,
+                maxLines = 1
+            )
             Box(
                 modifier = Modifier
                     .clip(RoundedCornerShape(8.dp))
-                    .background(PrimaryGold)
-                    .padding(horizontal = 7.dp, vertical = 2.dp)
+                    .background(badgeColor)
+                    .padding(horizontal = 8.dp, vertical = 2.dp)
             ) {
                 Text(
-                    text = "LV.$level",
-                    fontFamily = FredokaFontFamily,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 13.sp,
-                    color = DeepNavyOutline
+                    text = statusBadge,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (badgeColor == Color(0xFF495057)) Color.White else DeepNavyOutline
                 )
             }
-            Text(text = name, style = MaterialTheme.typography.titleLarge, color = Color.White)
-        }
-        Box(
-            modifier = Modifier
-                .clip(RoundedCornerShape(8.dp))
-                .background(badgeColor)
-                .padding(horizontal = 10.dp, vertical = 3.dp)
-        ) {
-            Text(
-                text = statusBadge,
-                style = MaterialTheme.typography.labelMedium,
-                color = if (badgeColor == Color(0xFF495057)) Color.White else DeepNavyOutline
-            )
         }
     }
 }

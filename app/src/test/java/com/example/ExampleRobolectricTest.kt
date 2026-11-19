@@ -1,20 +1,27 @@
 package com.example
 
+import android.app.NotificationManager
 import android.content.Context
 import androidx.test.core.app.ApplicationProvider
 import com.example.firebase.LevelProgressionCalculator
 import com.example.firebase.PlayerProfile
 import com.example.firebase.RankTier
+import com.example.firebase.RoomInvite
 import com.example.game.engine.BattleEngine
+import com.example.game.model.AppLanguage
 import com.example.game.model.Difficulty
 import com.example.game.model.GameMode
 import com.example.game.model.ItemType
 import com.example.game.model.MapTheme
 import com.example.game.model.PropType
+import com.example.game.model.TankType
 import com.example.game.model.TurnPhase
 import com.example.game.model.WeaponType
+import com.example.notifications.InviteNotificationManager
+import com.example.ui.online.renderRankingSnapshotBitmap
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -160,5 +167,140 @@ class ExampleRobolectricTest {
             assertEquals(hp.x, gp.x, 0.01f)
             assertEquals(hp.y, gp.y, 0.01f)
         }
+    }
+
+    @Test
+    fun `ranking snapshot renderer creates 1280x720 bitmap for TOP 1 and standard ranks`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val topOnePlayer = PlayerProfile(
+            id = "uid_champ",
+            userId = "uid_champ",
+            nickname = "구지초챔피언",
+            level = 9L,
+            wins = 24L,
+            losses = 3L,
+            onlineWins = 15L,
+            onlineLosses = 2L,
+            rankPoints = 1860L,
+            bestWinStreak = 8L,
+            selectedTank = TankType.POOP_KING.name
+        )
+        val runnerUp = PlayerProfile(
+            id = "uid_2",
+            userId = "uid_2",
+            nickname = "포탄장인",
+            level = 7L,
+            wins = 18L,
+            losses = 6L,
+            rankPoints = 1520L,
+            selectedTank = TankType.AQUA_HYDRO.name
+        )
+        val thirdPlace = PlayerProfile(
+            id = "uid_3",
+            userId = "uid_3",
+            nickname = "도형캠프",
+            level = 5L,
+            wins = 12L,
+            losses = 5L,
+            rankPoints = 1310L,
+            selectedTank = TankType.TOXIC_CHEMIST.name
+        )
+        val fourthPlace = PlayerProfile(
+            id = "uid_4",
+            userId = "uid_4",
+            nickname = "강철타이탄",
+            level = 4L,
+            wins = 9L,
+            losses = 4L,
+            rankPoints = 1210L,
+            selectedTank = TankType.MEGA_TITAN.name
+        )
+        val fifthPlace = PlayerProfile(
+            id = "uid_5",
+            userId = "uid_5",
+            nickname = "고철대장",
+            level = 3L,
+            wins = 7L,
+            losses = 5L,
+            rankPoints = 1120L,
+            selectedTank = TankType.JUNK_SCRAPPER.name
+        )
+        val leaderboard = listOf(topOnePlayer, runnerUp, thirdPlace, fourthPlace, fifthPlace)
+
+        val topOneBitmap = renderRankingSnapshotBitmap(
+            context = context,
+            language = AppLanguage.KO,
+            myProfile = topOnePlayer,
+            myRank = 1,
+            topPlayers = leaderboard
+        )
+        assertNotNull(topOneBitmap)
+        assertEquals(1280, topOneBitmap.width)
+        assertEquals(720, topOneBitmap.height)
+        assertFalse(topOneBitmap.isRecycled)
+        topOneBitmap.recycle()
+
+        val standardBitmap = renderRankingSnapshotBitmap(
+            context = context,
+            language = AppLanguage.EN,
+            myProfile = thirdPlace,
+            myRank = 3,
+            topPlayers = leaderboard
+        )
+        assertEquals(1280, standardBitmap.width)
+        assertEquals(720, standardBitmap.height)
+        standardBitmap.recycle()
+    }
+
+    @Test
+    fun `every weapon type has a dedicated tank type with passives applied in battle`() {
+        val weaponSet = WeaponType.entries.toSet()
+        val tankWeaponSet = TankType.entries.map { it.signatureWeapon }.toSet()
+        assertEquals(weaponSet, tankWeaponSet)
+        assertEquals(7, TankType.entries.size)
+
+        WeaponType.entries.forEach { weapon ->
+            val mappedTank = TankType.forWeapon(weapon)
+            assertEquals(weapon, mappedTank.signatureWeapon)
+            assertEquals(mappedTank, TankType.fromNameOrDefault(mappedTank.name))
+        }
+
+        val engine = BattleEngine()
+        engine.startNewMatch(
+            mode = GameMode.AI_VS_PLAYER,
+            diff = Difficulty.NORMAL,
+            theme = MapTheme.GRASSLAND,
+            p1TankType = TankType.MEGA_TITAN
+        )
+        val hud = engine.buildHudState()
+        assertEquals(TankType.MEGA_TITAN, hud.tanks[0].tankType)
+        assertEquals(100 + TankType.MEGA_TITAN.bonusHp, hud.tanks[0].maxHp)
+        assertEquals(WeaponType.POWER, hud.selectedWeapon)
+    }
+
+    @Test
+    fun `invite notification channel is created with high importance and cancels cleanly`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        InviteNotificationManager.ensureChannel(context, AppLanguage.KO)
+
+        val nm = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val channel = nm.getNotificationChannel(InviteNotificationManager.CHANNEL_ID_INVITES)
+        assertNotNull(channel)
+        assertEquals(NotificationManager.IMPORTANCE_HIGH, channel.importance)
+
+        val invite = RoomInvite(
+            id = "inv_test_1",
+            roomId = "room_123",
+            roomCode = "A1B2C3",
+            roomTitle = "친선 한판!",
+            mapTheme = MapTheme.ISLAND.name,
+            fromUid = "uid_friend",
+            fromName = "포탄친구",
+            toUid = "uid_me",
+            toName = "나"
+        )
+        // Should not throw even when runtime permission is not granted in test environment
+        InviteNotificationManager.showInviteNotification(context, invite, AppLanguage.KO)
+        InviteNotificationManager.cancelInviteNotification(context, invite.id)
     }
 }

@@ -51,7 +51,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -111,7 +110,7 @@ fun BattleHud(
         modifier = modifier
             .fillMaxSize()
             .windowInsetsPadding(WindowInsets.safeDrawing)
-            .padding(horizontal = 12.dp, vertical = 8.dp)
+            .padding(horizontal = 10.dp, vertical = 6.dp)
     ) {
         // 1) 상단 HUD: 양쪽 탱크 HP + 중앙 턴 타이머 & 바람 계기판 + 일시정지
         Row(
@@ -130,7 +129,7 @@ fun BattleHud(
                 )
             }
 
-            Spacer(modifier = Modifier.width(8.dp))
+            Spacer(modifier = Modifier.width(6.dp))
 
             CenterWindAndTimerPanel(
                 turnNumber = state.turnNumber,
@@ -139,7 +138,7 @@ fun BattleHud(
                 language = language
             )
 
-            Spacer(modifier = Modifier.width(8.dp))
+            Spacer(modifier = Modifier.width(6.dp))
 
             Row(
                 modifier = Modifier.weight(1f),
@@ -154,20 +153,21 @@ fun BattleHud(
                         modifier = Modifier.weight(1f)
                     )
                 }
-                Spacer(modifier = Modifier.width(6.dp))
+                Spacer(modifier = Modifier.width(5.dp))
                 IconButton(
                     onClick = onPauseClick,
                     modifier = Modifier
-                        .size(48.dp)
-                        .clip(RoundedCornerShape(14.dp))
+                        .size(38.dp)
+                        .clip(RoundedCornerShape(11.dp))
                         .background(HudSurfaceDark)
-                        .border(2.5.dp, DeepNavyOutline, RoundedCornerShape(14.dp))
+                        .border(2.dp, DeepNavyOutline, RoundedCornerShape(11.dp))
                         .testTag("pause_button")
                 ) {
                     Icon(
                         imageVector = Icons.Rounded.Pause,
                         contentDescription = if (isKo) "일시정지" else "Pause",
-                        tint = Color.White
+                        tint = Color.White,
+                        modifier = Modifier.size(20.dp)
                     )
                 }
             }
@@ -178,15 +178,15 @@ fun BattleHud(
             Box(
                 modifier = Modifier
                     .align(Alignment.TopCenter)
-                    .padding(top = 68.dp)
+                    .padding(top = 50.dp)
                     .clip(RoundedCornerShape(50))
                     .background(HudSurfaceDark)
-                    .border(2.dp, PrimaryGold, RoundedCornerShape(50))
-                    .padding(horizontal = 16.dp, vertical = 4.dp)
+                    .border(1.5.dp, PrimaryGold, RoundedCornerShape(50))
+                    .padding(horizontal = 12.dp, vertical = 3.dp)
             ) {
                 Text(
                     text = banner,
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.labelMedium,
                     color = PrimaryGold
                 )
             }
@@ -205,11 +205,11 @@ fun BattleHud(
             ) {
                 // 좌측: 전술 아이템 3종 + 이동/연료 + 각도/방향
                 Column(
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(5.dp),
                     horizontalAlignment = Alignment.Start
                 ) {
                     // 전술 아이템 3종 (수리, 연료+, 방어막)
-                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                         ItemType.entries.forEach { item ->
                             val used = item in activeTank.usedItems
                             val icon = when (item) {
@@ -219,33 +219,33 @@ fun BattleHud(
                             }
                             Box(
                                 modifier = Modifier
-                                    .minimumInteractiveComponentSize()
-                                    .height(48.dp)
-                                    .clip(RoundedCornerShape(14.dp))
+                                    .height(32.dp)
+                                    .clip(RoundedCornerShape(10.dp))
                                     .background(if (used) Color(0x88131E30) else HudSurfaceDark)
                                     .border(
-                                        width = 2.dp,
+                                        width = 1.5.dp,
                                         color = if (used) Color(0x44FFFFFF) else item.tintColor,
-                                        shape = RoundedCornerShape(14.dp)
+                                        shape = RoundedCornerShape(10.dp)
                                     )
                                     .clickable(enabled = canControl && !used) { onUseItem(item) }
-                                    .padding(horizontal = 10.dp)
+                                    .padding(horizontal = 7.dp)
                                     .testTag("item_${item.name.lowercase()}"),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    horizontalArrangement = Arrangement.spacedBy(3.dp)
                                 ) {
                                     Icon(
                                         imageVector = icon,
                                         contentDescription = item.label(language),
                                         tint = if (used) TextMuted.copy(alpha = 0.45f) else item.tintColor,
-                                        modifier = Modifier.size(16.dp)
+                                        modifier = Modifier.size(13.dp)
                                     )
                                     Text(
                                         text = item.label(language),
-                                        style = MaterialTheme.typography.labelMedium,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
                                         color = if (used) TextMuted.copy(alpha = 0.45f) else Color.White
                                     )
                                 }
@@ -254,33 +254,33 @@ fun BattleHud(
                     }
 
                     Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
                         verticalAlignment = Alignment.Bottom
                     ) {
                         // 이동 & 연료 카드
                         Column(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(18.dp))
+                                .clip(RoundedCornerShape(14.dp))
                                 .background(HudSurfaceDark)
-                                .border(2.5.dp, DeepNavyOutline, RoundedCornerShape(18.dp))
-                                .padding(8.dp),
+                                .border(2.dp, DeepNavyOutline, RoundedCornerShape(14.dp))
+                                .padding(5.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                                 HoldableGameButton(
                                     enabled = canControl && activeTank.fuel > 0f,
                                     onPressStart = { onMoveInput(-1) },
                                     onPressEnd = { onMoveInput(0) },
                                     containerColor = Color(0xFF284B63),
                                     modifier = Modifier
-                                        .size(52.dp)
+                                        .size(40.dp)
                                         .testTag("move_left_button")
                                 ) {
                                     Icon(
                                         imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
                                         contentDescription = if (isKo) "왼쪽 이동" else "Move Left",
                                         tint = Color.White,
-                                        modifier = Modifier.size(28.dp)
+                                        modifier = Modifier.size(21.dp)
                                     )
                                 }
                                 HoldableGameButton(
@@ -289,41 +289,60 @@ fun BattleHud(
                                     onPressEnd = { onMoveInput(0) },
                                     containerColor = Color(0xFF284B63),
                                     modifier = Modifier
-                                        .size(52.dp)
+                                        .size(40.dp)
                                         .testTag("move_right_button")
                                 ) {
                                     Icon(
                                         imageVector = Icons.AutoMirrored.Rounded.ArrowForward,
                                         contentDescription = if (isKo) "오른쪽 이동" else "Move Right",
                                         tint = Color.White,
-                                        modifier = Modifier.size(28.dp)
+                                        modifier = Modifier.size(21.dp)
                                     )
                                 }
                             }
-                            Spacer(modifier = Modifier.height(6.dp))
-                            val fuelFrac = (activeTank.fuel / activeTank.maxFuel).coerceIn(0f, 1f)
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            Spacer(modifier = Modifier.height(4.dp))
+                            val fuelFrac = (activeTank.fuel / activeTank.maxFuel.coerceAtLeast(1f)).coerceIn(0f, 1f)
+                            val fuelPct = (fuelFrac * 100f).roundToInt()
+                            val fuelBarColor = when {
+                                fuelFrac > 0.35f -> SuccessGreen
+                                fuelFrac > 0.15f -> WarningAmber
+                                else -> DangerRed
+                            }
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(2.dp)
                             ) {
-                                Text(
-                                    text = if (isKo) "연료" else "Fuel",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = TextMuted
-                                )
+                                Row(
+                                    modifier = Modifier.width(84.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = if (isKo) "연료" else "Fuel",
+                                        fontSize = 9.sp,
+                                        color = TextMuted
+                                    )
+                                    Text(
+                                        text = "$fuelPct%",
+                                        fontFamily = FredokaFontFamily,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 10.sp,
+                                        color = fuelBarColor
+                                    )
+                                }
                                 Box(
                                     modifier = Modifier
-                                        .width(74.dp)
-                                        .height(10.dp)
-                                        .clip(RoundedCornerShape(5.dp))
+                                        .width(84.dp)
+                                        .height(8.dp)
+                                        .clip(RoundedCornerShape(4.dp))
                                         .background(Color(0xFF0B1320))
-                                        .border(1.5.dp, DeepNavyOutline, RoundedCornerShape(5.dp))
+                                        .border(1.dp, DeepNavyOutline, RoundedCornerShape(4.dp))
                                 ) {
                                     Box(
                                         modifier = Modifier
                                             .fillMaxHeight()
                                             .fillMaxWidth(fuelFrac)
-                                            .background(if (fuelFrac > 0.25f) SuccessGreen else WarningAmber)
+                                            .background(fuelBarColor)
                                     )
                                 }
                             }
@@ -332,28 +351,28 @@ fun BattleHud(
                         // 각도 조절 & 방향 전환 카드
                         Row(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(18.dp))
+                                .clip(RoundedCornerShape(14.dp))
                                 .background(HudSurfaceDark)
-                                .border(2.5.dp, DeepNavyOutline, RoundedCornerShape(18.dp))
-                                .padding(8.dp),
+                                .border(2.dp, DeepNavyOutline, RoundedCornerShape(14.dp))
+                                .padding(5.dp),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                                 HoldableGameButton(
                                     enabled = canControl,
                                     onPressStart = { onAngleInput(1) },
                                     onPressEnd = { onAngleInput(0) },
                                     containerColor = Color(0xFF284B63),
                                     modifier = Modifier
-                                        .size(48.dp)
+                                        .size(36.dp)
                                         .testTag("angle_up_button")
                                 ) {
                                     Icon(
                                         imageVector = Icons.Rounded.KeyboardArrowUp,
                                         contentDescription = if (isKo) "각도 올리기" else "Angle Up",
                                         tint = Color.White,
-                                        modifier = Modifier.size(28.dp)
+                                        modifier = Modifier.size(22.dp)
                                     )
                                 }
                                 HoldableGameButton(
@@ -362,40 +381,40 @@ fun BattleHud(
                                     onPressEnd = { onAngleInput(0) },
                                     containerColor = Color(0xFF284B63),
                                     modifier = Modifier
-                                        .size(48.dp)
+                                        .size(36.dp)
                                         .testTag("angle_down_button")
                                 ) {
                                     Icon(
                                         imageVector = Icons.Rounded.KeyboardArrowDown,
                                         contentDescription = if (isKo) "각도 내리기" else "Angle Down",
                                         tint = Color.White,
-                                        modifier = Modifier.size(28.dp)
+                                        modifier = Modifier.size(22.dp)
                                     )
                                 }
                             }
 
                             Column(
                                 horizontalAlignment = Alignment.CenterHorizontally,
-                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                                verticalArrangement = Arrangement.spacedBy(2.dp)
                             ) {
                                 Text(
                                     text = if (isKo) "각도" else "Angle",
-                                    style = MaterialTheme.typography.labelMedium,
+                                    fontSize = 10.sp,
                                     color = TextMuted
                                 )
                                 Text(
                                     text = "${activeTank.aimAngleDeg.roundToInt()}°",
                                     fontFamily = FredokaFontFamily,
                                     fontWeight = FontWeight.Bold,
-                                    fontSize = 22.sp,
+                                    fontSize = 16.sp,
                                     color = PrimaryGold
                                 )
                                 Box(
                                     modifier = Modifier
-                                        .size(48.dp)
-                                        .clip(RoundedCornerShape(12.dp))
+                                        .size(34.dp)
+                                        .clip(RoundedCornerShape(9.dp))
                                         .background(Color(0xFF335C67))
-                                        .border(2.dp, DeepNavyOutline, RoundedCornerShape(12.dp))
+                                        .border(1.5.dp, DeepNavyOutline, RoundedCornerShape(9.dp))
                                         .clickable(enabled = canControl, onClick = onToggleFacing)
                                         .testTag("flip_facing_button"),
                                     contentAlignment = Alignment.Center
@@ -403,7 +422,8 @@ fun BattleHud(
                                     Icon(
                                         imageVector = Icons.Rounded.SwapHoriz,
                                         contentDescription = if (isKo) "좌우 방향 전환" else "Flip Direction",
-                                        tint = Color.White
+                                        tint = Color.White,
+                                        modifier = Modifier.size(18.dp)
                                     )
                                 }
                             }
@@ -414,7 +434,7 @@ fun BattleHud(
                 // 우측 조작부: 무기 효과 뱃지 + 7종 무기 스크롤 선택 바 + 파워 게이지/발사
                 Column(
                     horizontalAlignment = Alignment.End,
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     // 선택된 무기 효과 안내 배지
                     Box(
@@ -422,11 +442,11 @@ fun BattleHud(
                             .clip(RoundedCornerShape(50))
                             .background(HudSurfaceDark)
                             .border(1.5.dp, state.selectedWeapon.shellColor, RoundedCornerShape(50))
-                            .padding(horizontal = 10.dp, vertical = 3.dp)
+                            .padding(horizontal = 8.dp, vertical = 2.dp)
                     ) {
                         Text(
                             text = "${state.selectedWeapon.label(language)} · ${state.selectedWeapon.effect(language)}",
-                            style = MaterialTheme.typography.labelMedium,
+                            fontSize = 10.sp,
                             color = Color.White
                         )
                     }
@@ -434,9 +454,9 @@ fun BattleHud(
                     // 7종 무기 가로 스크롤 바
                     Row(
                         modifier = Modifier
-                            .widthIn(max = 315.dp)
+                            .widthIn(max = 264.dp)
                             .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         WeaponType.entries.forEach { weapon ->
                             val cd = activeTank.weaponCooldowns[weapon] ?: 0
@@ -453,9 +473,8 @@ fun BattleHud(
                             }
                             Box(
                                 modifier = Modifier
-                                    .minimumInteractiveComponentSize()
-                                    .height(48.dp)
-                                    .clip(RoundedCornerShape(14.dp))
+                                    .height(32.dp)
+                                    .clip(RoundedCornerShape(10.dp))
                                     .background(
                                         when {
                                             !isReady -> Color(0xAA1B263B)
@@ -464,39 +483,40 @@ fun BattleHud(
                                         }
                                     )
                                     .border(
-                                        width = if (isSelected) 2.5.dp else 2.dp,
+                                        width = if (isSelected) 2.dp else 1.5.dp,
                                         color = if (isSelected) Color.White else DeepNavyOutline,
-                                        shape = RoundedCornerShape(14.dp)
+                                        shape = RoundedCornerShape(10.dp)
                                     )
                                     .clickable(enabled = canControl && isReady) {
                                         onSelectWeapon(weapon)
                                     }
-                                    .padding(horizontal = 10.dp)
+                                    .padding(horizontal = 7.dp)
                                     .testTag("weapon_${weapon.name.lowercase()}"),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                    horizontalArrangement = Arrangement.spacedBy(3.dp)
                                 ) {
                                     Box(
                                         modifier = Modifier
-                                            .size(20.dp)
+                                            .size(16.dp)
                                             .clip(CircleShape)
                                             .background(weapon.shellColor)
-                                            .border(1.5.dp, DeepNavyOutline, CircleShape),
+                                            .border(1.dp, DeepNavyOutline, CircleShape),
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Icon(
                                             imageVector = weaponIcon,
                                             contentDescription = null,
                                             tint = DeepNavyOutline,
-                                            modifier = Modifier.size(13.dp)
+                                            modifier = Modifier.size(10.dp)
                                         )
                                     }
                                     Text(
                                         text = if (isReady) weapon.label(language) else "${weapon.label(language)}($cd)",
-                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
                                         color = if (isSelected) DeepNavyOutline else Color.White
                                     )
                                 }
@@ -506,21 +526,21 @@ fun BattleHud(
 
                     Row(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(20.dp))
+                            .clip(RoundedCornerShape(15.dp))
                             .background(HudSurfaceDark)
-                            .border(2.5.dp, DeepNavyOutline, RoundedCornerShape(20.dp))
-                            .padding(8.dp),
+                            .border(2.dp, DeepNavyOutline, RoundedCornerShape(15.dp))
+                            .padding(6.dp),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        horizontalArrangement = Arrangement.spacedBy(7.dp)
                     ) {
-                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                             val displayPower = if (state.turnPhase == TurnPhase.CHARGING) {
                                 (state.chargingPower * 100).roundToInt()
                             } else {
                                 ((activeTank.lastPowerRatio ?: 0f) * 100).roundToInt()
                             }
                             Row(
-                                modifier = Modifier.width(146.dp),
+                                modifier = Modifier.width(114.dp),
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
                                 Text(
@@ -530,25 +550,25 @@ fun BattleHud(
                                         isKo -> "파워"
                                         else -> "Power"
                                     },
-                                    style = MaterialTheme.typography.labelMedium,
+                                    fontSize = 10.sp,
                                     color = TextMuted
                                 )
                                 Text(
                                     text = "$displayPower%",
                                     fontFamily = FredokaFontFamily,
                                     fontWeight = FontWeight.Bold,
-                                    fontSize = 13.sp,
+                                    fontSize = 11.sp,
                                     color = PrimaryGold
                                 )
                             }
 
                             BoxWithConstraints(
                                 modifier = Modifier
-                                    .width(146.dp)
-                                    .height(18.dp)
-                                    .clip(RoundedCornerShape(9.dp))
+                                    .width(114.dp)
+                                    .height(13.dp)
+                                    .clip(RoundedCornerShape(7.dp))
                                     .background(Color(0xFF0B1320))
-                                    .border(2.dp, DeepNavyOutline, RoundedCornerShape(9.dp))
+                                    .border(1.5.dp, DeepNavyOutline, RoundedCornerShape(7.dp))
                             ) {
                                 val barWidth = maxWidth
                                 val currentFill = if (state.turnPhase == TurnPhase.CHARGING) {
@@ -569,8 +589,8 @@ fun BattleHud(
                                 activeTank.lastPowerRatio?.let { prev ->
                                     Box(
                                         modifier = Modifier
-                                            .offset(x = barWidth * prev.coerceIn(0.05f, 0.96f) - 1.5.dp)
-                                            .width(3.dp)
+                                            .offset(x = barWidth * prev.coerceIn(0.05f, 0.96f) - 1.dp)
+                                            .width(2.5.dp)
                                             .fillMaxHeight()
                                             .background(Color.White)
                                     )
@@ -584,18 +604,19 @@ fun BattleHud(
                             onPressEnd = onReleaseFire,
                             containerColor = if (state.turnPhase == TurnPhase.CHARGING) DangerRed else PrimaryGoldDark,
                             modifier = Modifier
-                                .width(106.dp)
-                                .height(60.dp)
+                                .width(82.dp)
+                                .height(46.dp)
                                 .testTag("fire_button")
                         ) {
                             Text(
                                 text = when {
-                                    state.turnPhase == TurnPhase.CHARGING && isKo -> "놓으면 발사!"
-                                    state.turnPhase == TurnPhase.CHARGING -> "RELEASE!"
+                                    state.turnPhase == TurnPhase.CHARGING && isKo -> "발사!"
+                                    state.turnPhase == TurnPhase.CHARGING -> "FIRE!"
                                     isKo -> "발사"
                                     else -> "FIRE"
                                 },
-                                style = MaterialTheme.typography.titleMedium,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold,
                                 color = Color.White
                             )
                         }
@@ -620,10 +641,10 @@ private fun TankHpHeaderCard(
     )
     Column(
         modifier = modifier
-            .clip(RoundedCornerShape(14.dp))
+            .clip(RoundedCornerShape(11.dp))
             .background(HudSurfaceDark)
-            .border(2.5.dp, borderColor, RoundedCornerShape(14.dp))
-            .padding(horizontal = 10.dp, vertical = 6.dp),
+            .border(2.dp, borderColor, RoundedCornerShape(11.dp))
+            .padding(horizontal = 8.dp, vertical = 4.dp),
         horizontalAlignment = if (alignEnd) Alignment.End else Alignment.Start
     ) {
         Row(
@@ -633,11 +654,12 @@ private fun TankHpHeaderCard(
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                horizontalArrangement = Arrangement.spacedBy(3.dp)
             ) {
                 Text(
                     text = tank.name,
-                    style = MaterialTheme.typography.bodyMedium,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
                     color = Color.White
                 )
                 if (tank.hasShield) {
@@ -645,7 +667,7 @@ private fun TankHpHeaderCard(
                         imageVector = Icons.Rounded.Shield,
                         contentDescription = "Shield",
                         tint = Color(0xFF4CC9F0),
-                        modifier = Modifier.size(14.dp)
+                        modifier = Modifier.size(12.dp)
                     )
                 }
             }
@@ -653,18 +675,18 @@ private fun TankHpHeaderCard(
                 text = "${tank.hp}/${tank.maxHp}",
                 fontFamily = FredokaFontFamily,
                 fontWeight = FontWeight.Bold,
-                fontSize = 13.sp,
+                fontSize = 11.sp,
                 color = tank.accentColor
             )
         }
-        Spacer(modifier = Modifier.height(4.dp))
+        Spacer(modifier = Modifier.height(3.dp))
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(10.dp)
-                .clip(RoundedCornerShape(5.dp))
+                .height(7.dp)
+                .clip(RoundedCornerShape(4.dp))
                 .background(Color(0xFF0B1320))
-                .border(1.5.dp, DeepNavyOutline, RoundedCornerShape(5.dp))
+                .border(1.dp, DeepNavyOutline, RoundedCornerShape(4.dp))
         ) {
             Box(
                 modifier = Modifier
@@ -688,70 +710,70 @@ private fun CenterWindAndTimerPanel(
     val isKo = language == AppLanguage.KO
     Row(
         modifier = Modifier
-            .clip(RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(12.dp))
             .background(HudSurfaceDark)
-            .border(2.5.dp, DeepNavyOutline, RoundedCornerShape(16.dp))
-            .padding(horizontal = 12.dp, vertical = 6.dp),
+            .border(2.dp, DeepNavyOutline, RoundedCornerShape(12.dp))
+            .padding(horizontal = 9.dp, vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
+        horizontalArrangement = Arrangement.spacedBy(9.dp)
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
                 text = "TURN $turnNumber",
                 fontFamily = FredokaFontFamily,
-                fontSize = 10.sp,
+                fontSize = 9.sp,
                 color = TextMuted
             )
             Text(
                 text = "${seconds}s",
                 fontFamily = FredokaFontFamily,
                 fontWeight = FontWeight.Bold,
-                fontSize = 20.sp,
+                fontSize = 16.sp,
                 color = if (isUrgent) DangerRed else PrimaryGold
             )
         }
 
         Box(
             modifier = Modifier
-                .width(1.5.dp)
-                .height(28.dp)
+                .width(1.dp)
+                .height(22.dp)
                 .background(Color.White.copy(alpha = 0.18f))
         )
 
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(3.dp)
+                horizontalArrangement = Arrangement.spacedBy(2.dp)
             ) {
                 Icon(
                     imageVector = Icons.Rounded.Air,
                     contentDescription = if (isKo) "바람" else "Wind",
                     tint = Color(0xFF90E0EF),
-                    modifier = Modifier.size(14.dp)
+                    modifier = Modifier.size(12.dp)
                 )
                 Text(
                     text = if (isKo) "바람" else "Wind",
-                    style = MaterialTheme.typography.labelMedium,
+                    fontSize = 9.sp,
                     color = TextMuted
                 )
             }
             Row(
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                horizontalArrangement = Arrangement.spacedBy(3.dp)
             ) {
                 if (windForce < 0) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Rounded.ArrowBack,
                         contentDescription = "Wind Left",
                         tint = Color(0xFF4CC9F0),
-                        modifier = Modifier.size(16.dp)
+                        modifier = Modifier.size(13.dp)
                     )
                 }
                 Text(
                     text = if (windForce == 0) (if (isKo) "무풍 0" else "Calm 0") else "${abs(windForce)}",
                     fontFamily = FredokaFontFamily,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 16.sp,
+                    fontSize = 13.sp,
                     color = if (windForce == 0) Color.White else Color(0xFF90E0EF)
                 )
                 if (windForce > 0) {
@@ -759,7 +781,7 @@ private fun CenterWindAndTimerPanel(
                         imageVector = Icons.AutoMirrored.Rounded.ArrowForward,
                         contentDescription = "Wind Right",
                         tint = Color(0xFF4CC9F0),
-                        modifier = Modifier.size(16.dp)
+                        modifier = Modifier.size(13.dp)
                     )
                 }
             }
@@ -784,12 +806,12 @@ fun HoldableGameButton(
     Box(
         modifier = modifier
             .scale(if (pressed) 0.94f else 1f)
-            .clip(RoundedCornerShape(14.dp))
+            .clip(RoundedCornerShape(10.dp))
             .background(if (enabled) containerColor else containerColor.copy(alpha = 0.4f))
             .border(
-                width = 2.5.dp,
+                width = 2.dp,
                 color = if (pressed) Color.White else DeepNavyOutline,
-                shape = RoundedCornerShape(14.dp)
+                shape = RoundedCornerShape(10.dp)
             )
             .pointerInput(Unit) {
                 awaitEachGesture {

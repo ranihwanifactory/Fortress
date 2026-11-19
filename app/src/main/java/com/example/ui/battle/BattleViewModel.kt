@@ -17,6 +17,7 @@ import com.example.game.model.Difficulty
 import com.example.game.model.GameMode
 import com.example.game.model.ItemType
 import com.example.game.model.MapTheme
+import com.example.game.model.TankType
 import com.example.game.model.TurnPhase
 import com.example.game.model.WeaponType
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -45,11 +46,19 @@ class BattleViewModel(application: Application) : AndroidViewModel(application) 
     private val _selectedMap = MutableStateFlow(MapTheme.GRASSLAND)
     val selectedMap: StateFlow<MapTheme> = _selectedMap.asStateFlow()
 
+    private val _selectedTank = MutableStateFlow(
+        TankType.fromNameOrDefault(prefs.getString("selected_tank", TankType.CLASSIC.name))
+    )
+    val selectedTank: StateFlow<TankType> = _selectedTank.asStateFlow()
+
     private val _settings = MutableStateFlow(
         AudioSettingsState(
             bgmEnabled = audio.bgmEnabled,
+            bgmVolume = audio.bgmVolume,
             sfxEnabled = audio.sfxEnabled,
             vibrationEnabled = audio.vibrationEnabled,
+            invitePushEnabled = prefs.getBoolean("invite_push_enabled", false),
+            pushOptInPrompted = prefs.getBoolean("push_opt_in_prompted", false),
             language = if (prefs.getString("lang", "KO") == "EN") AppLanguage.EN else AppLanguage.KO
         )
     )
@@ -72,6 +81,19 @@ class BattleViewModel(application: Application) : AndroidViewModel(application) 
         syncStates()
     }
 
+    fun selectTank(tank: TankType) {
+        audio.playSfx(SfxType.BUTTON, pitch = 1.12f)
+        _selectedTank.value = tank
+        prefs.edit().putString("selected_tank", tank.name).apply()
+    }
+
+    fun syncSelectedTankFromProfile(tank: TankType) {
+        if (_selectedTank.value != tank) {
+            _selectedTank.value = tank
+            prefs.edit().putString("selected_tank", tank.name).apply()
+        }
+    }
+
     fun startMatch(
         mode: GameMode,
         playerNickname: String? = null,
@@ -85,7 +107,8 @@ class BattleViewModel(application: Application) : AndroidViewModel(application) 
             diff = _selectedDifficulty.value,
             theme = _selectedMap.value,
             playerNickname = playerNickname,
-            playerHpBonus = playerHpBonus
+            playerHpBonus = playerHpBonus,
+            p1TankType = _selectedTank.value
         )
         audio.playBgm(BgmTrack.BATTLE)
         syncStates()
@@ -101,7 +124,9 @@ class BattleViewModel(application: Application) : AndroidViewModel(application) 
             hostName = room.hostName.ifBlank { "1P" },
             guestName = room.guestName.ifBlank { "2P" },
             localIsHost = room.hostUid == localUid,
-            initialWindForce = room.windForce.toInt()
+            initialWindForce = room.windForce.toInt(),
+            hostTankType = room.parsedHostTank(),
+            guestTankType = room.parsedGuestTank()
         )
         audio.playBgm(BgmTrack.BATTLE)
         syncStates()
@@ -143,7 +168,8 @@ class BattleViewModel(application: Application) : AndroidViewModel(application) 
             diff = current.difficulty,
             theme = current.mapTheme,
             playerNickname = lastPlayerNickname,
-            playerHpBonus = lastPlayerHpBonus
+            playerHpBonus = lastPlayerHpBonus,
+            p1TankType = _selectedTank.value
         )
         audio.playBgm(BgmTrack.BATTLE)
         syncStates()
@@ -219,8 +245,16 @@ class BattleViewModel(application: Application) : AndroidViewModel(application) 
 
     fun setBgmEnabled(enabled: Boolean) {
         audio.setBgmEnabled(enabled)
-        _settings.value = _settings.value.copy(bgmEnabled = enabled)
+        _settings.value = _settings.value.copy(bgmEnabled = audio.bgmEnabled)
         audio.playSfx(SfxType.BUTTON, volume = 0.65f)
+    }
+
+    fun setBgmVolume(volume: Float) {
+        audio.setBgmVolume(volume)
+        _settings.value = _settings.value.copy(
+            bgmEnabled = audio.bgmEnabled,
+            bgmVolume = audio.bgmVolume
+        )
     }
 
     fun setSfxEnabled(enabled: Boolean) {
@@ -234,6 +268,24 @@ class BattleViewModel(application: Application) : AndroidViewModel(application) 
         _settings.value = _settings.value.copy(vibrationEnabled = enabled)
         if (enabled) audio.vibrate(40L, 120)
         audio.playSfx(SfxType.BUTTON, volume = 0.65f)
+    }
+
+    fun setInvitePushEnabled(enabled: Boolean, markPrompted: Boolean = true) {
+        val editor = prefs.edit().putBoolean("invite_push_enabled", enabled)
+        if (markPrompted) {
+            editor.putBoolean("push_opt_in_prompted", true)
+        }
+        editor.apply()
+        _settings.value = _settings.value.copy(
+            invitePushEnabled = enabled,
+            pushOptInPrompted = if (markPrompted) true else _settings.value.pushOptInPrompted
+        )
+        audio.playSfx(SfxType.BUTTON, volume = 0.7f, pitch = if (enabled) 1.15f else 0.95f)
+    }
+
+    fun playInviteAlertChime() {
+        audio.playSfx(SfxType.TURN_START, volume = 0.85f, pitch = 1.25f)
+        audio.vibrate(90L, 180)
     }
 
     fun setLanguage(lang: AppLanguage) {

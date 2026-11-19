@@ -263,6 +263,134 @@ enum class WeaponType(
     fun effect(lang: AppLanguage): String = if (lang == AppLanguage.KO) effectKo else effectEn
 }
 
+/**
+ * 7종 포탄(기본탄·2연발·강력탄·물포탄·똥포탄·가스포탄·쓰레기탄)에 1:1로 대응하는 개성 넘치는 전용 탱크 라인업.
+ */
+enum class TankType(
+    val signatureWeapon: WeaponType,
+    val labelKo: String,
+    val labelEn: String,
+    val titleKo: String,
+    val titleEn: String,
+    val perkKo: String,
+    val perkEn: String,
+    val primaryColor: Color,
+    val accentColor: Color,
+    val trimColor: Color,
+    val bonusHp: Int = 0,
+    val bonusFuel: Float = 0f,
+    val signatureDamageMultiplier: Float = 1.15f,
+    val signatureCooldownReduction: Int = 0
+) {
+    CLASSIC(
+        signatureWeapon = WeaponType.STANDARD,
+        labelKo = "캐논 캡틴",
+        labelEn = "Cannon Captain",
+        titleKo = "기본탄 특화 · 정통 만능 전차",
+        titleEn = "Normal Shell · Balanced Ace",
+        perkKo = "기본탄 피해 +15% · HP +5",
+        perkEn = "Normal +15% DMG · +5 HP",
+        primaryColor = Color(0xFF1E88E5),
+        accentColor = Color(0xFF64B5F6),
+        trimColor = Color(0xFFFFD166),
+        bonusHp = 5,
+        bonusFuel = 5f
+    ),
+    TWIN_STRIKER(
+        signatureWeapon = WeaponType.DOUBLE,
+        labelKo = "트윈 스트라이커",
+        labelEn = "Twin Striker",
+        titleKo = "2연발 특화 · 쌍포신 고속 전차",
+        titleEn = "Double Shell · Dual-Barrel Jet",
+        perkKo = "2연발 쿨타임 -1턴 · 연료 +15%",
+        perkEn = "Double CD -1 · +15% Fuel",
+        primaryColor = Color(0xFF0096C7),
+        accentColor = Color(0xFF48CAE4),
+        trimColor = Color(0xFF90E0EF),
+        bonusFuel = 15f,
+        signatureCooldownReduction = 1
+    ),
+    MEGA_TITAN(
+        signatureWeapon = WeaponType.POWER,
+        labelKo = "메가 타이탄",
+        labelEn = "Mega Titan",
+        titleKo = "강력탄 특화 · 중장갑 거포 전차",
+        titleEn = "Heavy Shell · Siege Dreadnought",
+        perkKo = "강력탄 피해 +15% · HP +15",
+        perkEn = "Heavy +15% DMG · +15 HP",
+        primaryColor = Color(0xFFD62828),
+        accentColor = Color(0xFFF77F00),
+        trimColor = Color(0xFFFFD166),
+        bonusHp = 15
+    ),
+    AQUA_HYDRO(
+        signatureWeapon = WeaponType.WATER,
+        labelKo = "아쿠아 하이드로",
+        labelEn = "Aqua Hydro",
+        titleKo = "물포탄 특화 · 수압 제트 전차",
+        titleEn = "Water Shell · Hydro-Jet Tank",
+        perkKo = "물포탄 피해 +15% · 연료 +10%",
+        perkEn = "Water +15% DMG · +10% Fuel",
+        primaryColor = Color(0xFF00B4D8),
+        accentColor = Color(0xFF90E0EF),
+        trimColor = Color(0xFFCAF0F8),
+        bonusFuel = 10f
+    ),
+    POOP_KING(
+        signatureWeapon = WeaponType.POOP,
+        labelKo = "응가 킹",
+        labelEn = "Poop King",
+        titleKo = "똥포탄 특화 · 황금 왕관 장난꾸러기",
+        titleEn = "Poop Shell · Golden Crown Prankster",
+        perkKo = "똥포탄 피해 +15% · 쿨타임 -1턴",
+        perkEn = "Poop +15% DMG · CD -1",
+        primaryColor = Color(0xFF8D5524),
+        accentColor = Color(0xFFC68642),
+        trimColor = Color(0xFFFFD166),
+        bonusHp = 5,
+        signatureCooldownReduction = 1
+    ),
+    TOXIC_CHEMIST(
+        signatureWeapon = WeaponType.GAS,
+        labelKo = "독가스 케미스트",
+        labelEn = "Toxic Chemist",
+        titleKo = "가스포탄 특화 · 네온 화학 탱크",
+        titleEn = "Gas Shell · Bio-Chem Tank",
+        perkKo = "가스포탄 피해 +15% · 쿨타임 -1턴",
+        perkEn = "Gas +15% DMG · CD -1",
+        primaryColor = Color(0xFF38B000),
+        accentColor = Color(0xFF70E000),
+        trimColor = Color(0xFFCCFF33),
+        signatureCooldownReduction = 1
+    ),
+    JUNK_SCRAPPER(
+        signatureWeapon = WeaponType.TRASH,
+        labelKo = "고철 스크래퍼",
+        labelEn = "Junk Scrapper",
+        titleKo = "쓰레기탄 특화 · 리벳 강철 투석기",
+        titleEn = "Trash Shell · Scrap Catapult",
+        perkKo = "쓰레기탄 피해 +15% · HP +10",
+        perkEn = "Trash +15% DMG · +10 HP",
+        primaryColor = Color(0xFF6C757D),
+        accentColor = Color(0xFFADB5BD),
+        trimColor = Color(0xFFFFB703),
+        bonusHp = 10,
+        bonusFuel = 8f
+    );
+
+    fun label(lang: AppLanguage): String = if (lang == AppLanguage.KO) labelKo else labelEn
+    fun title(lang: AppLanguage): String = if (lang == AppLanguage.KO) titleKo else titleEn
+    fun perk(lang: AppLanguage): String = if (lang == AppLanguage.KO) perkKo else perkEn
+
+    companion object {
+        fun fromNameOrDefault(raw: String?): TankType =
+            entries.firstOrNull { it.name == raw } ?: CLASSIC
+
+        fun forWeapon(weapon: WeaponType): TankType =
+            entries.firstOrNull { it.signatureWeapon == weapon } ?: CLASSIC
+    }
+}
+
 enum class ItemType(
     val labelKo: String,
     val labelEn: String,
@@ -306,6 +434,7 @@ data class TankState(
     val maxHp: Int = 100,
     val fuel: Float = 100f,
     val maxFuel: Float = 100f,
+    val tankType: TankType = TankType.CLASSIC,
     val primaryColor: Color = PlayerBlue,
     val accentColor: Color = PlayerBlueLight,
     val recoilOffset: Float = 0f,
@@ -455,8 +584,11 @@ data class BattleRenderSnapshot(
 
 data class AudioSettingsState(
     val bgmEnabled: Boolean = true,
+    val bgmVolume: Float = 0.7f,
     val sfxEnabled: Boolean = true,
     val vibrationEnabled: Boolean = true,
+    val invitePushEnabled: Boolean = false,
+    val pushOptInPrompted: Boolean = false,
     val language: AppLanguage = AppLanguage.KO
 )
 
@@ -482,6 +614,7 @@ data class BattleHudState(
             x = 340f,
             y = 500f,
             facingRight = true,
+            tankType = TankType.CLASSIC,
             primaryColor = PlayerBlue,
             accentColor = PlayerBlueLight
         ),
@@ -492,6 +625,7 @@ data class BattleHudState(
             x = 1860f,
             y = 500f,
             facingRight = false,
+            tankType = TankType.MEGA_TITAN,
             primaryColor = EnemyCoral,
             accentColor = EnemyCoralLight
         )

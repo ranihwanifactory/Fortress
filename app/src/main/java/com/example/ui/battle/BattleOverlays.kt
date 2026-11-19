@@ -34,11 +34,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.Logout
+import androidx.compose.material.icons.automirrored.rounded.VolumeUp
 import androidx.compose.material.icons.rounded.AutoAwesome
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.EmojiEvents
 import androidx.compose.material.icons.rounded.Groups
 import androidx.compose.material.icons.rounded.HelpOutline
+import androidx.compose.material.icons.rounded.NotificationsActive
+import androidx.compose.material.icons.rounded.NotificationsOff
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.Public
 import androidx.compose.material.icons.rounded.Refresh
@@ -51,6 +54,8 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -84,6 +89,8 @@ import com.example.game.model.BattleHudState
 import com.example.game.model.Difficulty
 import com.example.game.model.GameMode
 import com.example.game.model.MapTheme
+import com.example.game.model.TankType
+import com.example.ui.tank.TankAvatar
 import com.example.ui.theme.DangerRed
 import com.example.ui.theme.DeepNavyOutline
 import com.example.ui.theme.FredokaFontFamily
@@ -96,6 +103,7 @@ import com.example.ui.theme.SuccessGreen
 import com.example.ui.theme.TextMuted
 import kotlin.math.PI
 import kotlin.math.cos
+import kotlin.math.roundToInt
 import kotlin.math.sin
 
 /**
@@ -106,11 +114,13 @@ import kotlin.math.sin
 fun TitleOverlay(
     selectedDifficulty: Difficulty,
     selectedMap: MapTheme,
+    selectedTank: TankType,
     language: AppLanguage,
     profile: PlayerProfile?,
     pendingInviteCount: Int,
     onSelectDifficulty: (Difficulty) -> Unit,
     onSelectMap: (MapTheme) -> Unit,
+    onOpenTankSelector: () -> Unit,
     onStartAiMatch: () -> Unit,
     onStartLocalMatch: () -> Unit,
     onOpenOnlineLobby: () -> Unit,
@@ -392,30 +402,78 @@ fun TitleOverlay(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(6.dp))
 
-                Image(
-                    painter = painterResource(id = R.drawable.cannon_app_icon),
-                    contentDescription = "캐논 대전 탱크",
+                // 내 출격 탱크 쇼케이스 카드 (터치 시 7종 포탄별 탱크 격납고 열기)
+                Row(
                     modifier = Modifier
-                        .size(88.dp)
-                        .clip(RoundedCornerShape(22.dp))
-                        .border(3.dp, Color.White, RoundedCornerShape(22.dp))
-                        .border(1.5.dp, DeepNavyOutline, RoundedCornerShape(22.dp))
-                )
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(18.dp))
+                        .background(Color(0xDD0D1B2A))
+                        .border(2.dp, selectedTank.trimColor, RoundedCornerShape(18.dp))
+                        .clickable { onOpenTankSelector() }
+                        .padding(horizontal = 10.dp, vertical = 7.dp)
+                        .testTag("open_tank_selector_button"),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    TankAvatar(
+                        tankType = selectedTank,
+                        size = 64.dp,
+                        showPedestal = true,
+                        highlighted = true
+                    )
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        Text(
+                            text = selectedTank.label(language),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        Text(
+                            text = "${selectedTank.signatureWeapon.label(language)} · ${selectedTank.perk(language)}",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = selectedTank.trimColor,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(PrimaryGold)
+                            .border(1.5.dp, DeepNavyOutline, RoundedCornerShape(10.dp))
+                            .padding(horizontal = 9.dp, vertical = 6.dp)
+                    ) {
+                        Text(
+                            text = if (isKo) "탱크 변경" else "Tanks",
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = DeepNavyOutline
+                        )
+                    }
+                }
 
                 Spacer(modifier = Modifier.height(6.dp))
 
                 Box(
                     modifier = Modifier
                         .clip(RoundedCornerShape(50))
-                        .background(Color(0xBB0D1B2A))
-                        .padding(horizontal = 12.dp, vertical = 4.dp)
+                        .background(Color(0xDD132238))
+                        .border(1.5.dp, PrimaryGold, RoundedCornerShape(50))
+                        .padding(horizontal = 12.dp, vertical = 3.dp)
+                        .testTag("creator_credit_badge")
                 ) {
                     Text(
-                        text = if (isKo) "바람을 읽고! 지형을 부수고! 명중시켜라!" else "Read the Wind! Break the Ground! Fire!",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = Color.White,
+                        text = if (isKo) "제작 · 구지초도형캠프" else "Created by 구지초도형캠프",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = PrimaryGold,
                         textAlign = TextAlign.Center
                     )
                 }
@@ -676,30 +734,35 @@ fun TitleOverlay(
 fun SettingsOverlay(
     settings: AudioSettingsState,
     onToggleBgm: (Boolean) -> Unit,
+    onBgmVolumeChange: (Float) -> Unit,
     onToggleSfx: (Boolean) -> Unit,
     onToggleVibration: (Boolean) -> Unit,
+    onToggleInvitePush: (Boolean) -> Unit,
+    pushPermissionHint: String? = null,
     onSelectLanguage: (AppLanguage) -> Unit,
     onDismiss: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val isKo = settings.language == AppLanguage.KO
+    val volumePct = (settings.bgmVolume * 100f).roundToInt().coerceIn(0, 100)
     Box(
         modifier = modifier
             .fillMaxSize()
             .background(Color(0xBB08101C))
             .windowInsetsPadding(WindowInsets.safeDrawing)
-            .padding(20.dp),
+            .padding(16.dp),
         contentAlignment = Alignment.Center
     ) {
         Column(
             modifier = Modifier
-                .widthIn(max = 440.dp)
+                .widthIn(max = 450.dp)
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(24.dp))
                 .background(HudSurfaceDark)
                 .border(3.dp, PrimaryGold, RoundedCornerShape(24.dp))
-                .padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+                .padding(18.dp)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -711,7 +774,7 @@ fun SettingsOverlay(
                     style = MaterialTheme.typography.headlineMedium,
                     color = PrimaryGold
                 )
-                IconButton(onClick = onDismiss, modifier = Modifier.size(48.dp)) {
+                IconButton(onClick = onDismiss, modifier = Modifier.size(44.dp)) {
                     Icon(Icons.Rounded.Close, contentDescription = "Close", tint = Color.White)
                 }
             }
@@ -721,6 +784,60 @@ fun SettingsOverlay(
                 checked = settings.bgmEnabled,
                 onCheckedChange = onToggleBgm
             )
+
+            // 배경음악 볼륨 슬라이더
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Color(0xFF102036))
+                    .border(1.5.dp, Color(0xFF284B63), RoundedCornerShape(14.dp))
+                    .padding(horizontal = 12.dp, vertical = 6.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Rounded.VolumeUp,
+                            contentDescription = if (isKo) "배경음악 볼륨" else "BGM Volume",
+                            tint = if (settings.bgmEnabled) PrimaryGold else TextMuted,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Text(
+                            text = if (isKo) "배경음악 볼륨" else "BGM Volume",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (settings.bgmEnabled) Color.White else TextMuted
+                        )
+                    }
+                    Text(
+                        text = if (settings.bgmEnabled) "$volumePct%" else (if (isKo) "음소거" else "Muted"),
+                        fontFamily = FredokaFontFamily,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp,
+                        color = if (settings.bgmEnabled) PrimaryGold else TextMuted
+                    )
+                }
+                Slider(
+                    value = if (settings.bgmEnabled) settings.bgmVolume else 0f,
+                    onValueChange = onBgmVolumeChange,
+                    valueRange = 0f..1f,
+                    colors = SliderDefaults.colors(
+                        thumbColor = PrimaryGold,
+                        activeTrackColor = PrimaryGold,
+                        inactiveTrackColor = Color(0xFF23395B)
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("bgm_volume_slider")
+                )
+            }
+
             SettingsSwitchRow(
                 label = if (isKo) "효과음 (SFX)" else "Sound Effects",
                 checked = settings.sfxEnabled,
@@ -731,6 +848,76 @@ fun SettingsOverlay(
                 checked = settings.vibrationEnabled,
                 onCheckedChange = onToggleVibration
             )
+
+            // 친구 초대 푸시 알림 선택 토글 카드
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(Color(0xFF102036))
+                    .border(
+                        width = 1.5.dp,
+                        color = if (settings.invitePushEnabled) PrimaryGold.copy(alpha = 0.75f) else Color(0xFF284B63),
+                        shape = RoundedCornerShape(14.dp)
+                    )
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Row(
+                        modifier = Modifier.weight(1f),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (settings.invitePushEnabled) {
+                                Icons.Rounded.NotificationsActive
+                            } else {
+                                Icons.Rounded.NotificationsOff
+                            },
+                            contentDescription = if (isKo) "친구 초대 푸시 알림" else "Friend Invite Push Alerts",
+                            tint = if (settings.invitePushEnabled) PrimaryGold else TextMuted,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Column {
+                            Text(
+                                text = if (isKo) "친구 초대 푸시 알림" else "Friend Invite Push Alerts",
+                                style = MaterialTheme.typography.titleSmall,
+                                color = Color.White
+                            )
+                            Text(
+                                text = if (settings.invitePushEnabled) {
+                                    if (isKo) "친구가 초대하면 푸시 알림으로 즉시 안내" else "Instant push alert when friends invite you"
+                                } else {
+                                    if (isKo) "꺼짐 · 초대함에서 직접 확인할 수 있어요" else "Off · Check invites manually in Lobby"
+                                },
+                                style = MaterialTheme.typography.labelSmall,
+                                color = if (settings.invitePushEnabled) Color(0xFF90E0EF) else TextMuted
+                            )
+                        }
+                    }
+                    Switch(
+                        checked = settings.invitePushEnabled,
+                        onCheckedChange = onToggleInvitePush,
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = DeepNavyOutline,
+                            checkedTrackColor = PrimaryGold
+                        ),
+                        modifier = Modifier.testTag("settings_invite_push_switch")
+                    )
+                }
+                if (!pushPermissionHint.isNullOrBlank()) {
+                    Text(
+                        text = pushPermissionHint,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color(0xFFFFB703)
+                    )
+                }
+            }
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -763,6 +950,29 @@ fun SettingsOverlay(
                         }
                     }
                 }
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Color(0xFF102036))
+                    .border(1.5.dp, PrimaryGold.copy(alpha = 0.6f), RoundedCornerShape(12.dp))
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = if (isKo) "제작자" else "Creator",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = TextMuted
+                )
+                Text(
+                    text = "구지초도형캠프",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = PrimaryGold
+                )
             }
         }
     }

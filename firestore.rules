@@ -36,10 +36,16 @@ service cloud.firestore {
       return item in ['', 'HEAL', 'FUEL_BOOST', 'SHIELD'];
     }
 
+    function isValidTankType(tank) {
+      return tank in ['CLASSIC', 'TWIN_STRIKER', 'MEGA_TITAN', 'AQUA_HYDRO', 'POOP_KING', 'TOXIC_CHEMIST', 'JUNK_SCRAPPER'];
+    }
+
     // 3. Entity Validation Blueprints
     function isValidPlayerProfile(data) {
       return data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
              data.nickname is string && data.nickname.size() >= 1 && data.nickname.size() <= 24 &&
+             (!('selectedTank' in data) || isValidTankType(data.selectedTank)) &&
+             (!('invitePushEnabled' in data) || data.invitePushEnabled is bool) &&
              data.listedInRanking is bool &&
              data.level is int && data.level >= 1 && data.level <= 999 &&
              data.xp is int && data.xp >= 0 && data.xp <= 1000000 &&
@@ -62,9 +68,11 @@ service cloud.firestore {
              data.hostUid is string && data.hostUid.size() >= 1 && data.hostUid.size() <= 128 &&
              data.hostName is string && data.hostName.size() >= 1 && data.hostName.size() <= 24 &&
              data.hostLevel is int && data.hostLevel >= 1 && data.hostLevel <= 999 &&
+             (!('hostTank' in data) || isValidTankType(data.hostTank)) &&
              data.guestUid is string && data.guestUid.size() <= 128 &&
              data.guestName is string && data.guestName.size() <= 24 &&
              data.guestLevel is int && data.guestLevel >= 0 && data.guestLevel <= 999 &&
+             (!('guestTank' in data) || data.guestTank == '' || isValidTankType(data.guestTank)) &&
              data.guestReady is bool &&
              data.participantUids is list && data.participantUids.size() >= 1 && data.participantUids.size() <= 2 &&
              data.participantUids[0] is string &&
@@ -109,18 +117,18 @@ service cloud.firestore {
         (prev.guestUid == '' && uid != prev.hostUid && next.guestUid == uid &&
          next.guestName.size() >= 1 && next.guestLevel >= 1 &&
          next.participantUids == [prev.hostUid, uid] &&
-         changed.hasOnly(['guestUid', 'guestName', 'guestLevel', 'guestReady', 'participantUids', 'updatedAt'])) ||
-        // Action 2: Guest toggles ready
+         changed.hasOnly(['guestUid', 'guestName', 'guestLevel', 'guestTank', 'guestReady', 'participantUids', 'updatedAt'])) ||
+        // Action 2: Guest toggles ready or swaps tank
         (uid == prev.guestUid && next.guestUid == prev.guestUid &&
-         changed.hasOnly(['guestReady', 'updatedAt'])) ||
+         changed.hasOnly(['guestReady', 'guestTank', 'updatedAt'])) ||
         // Action 3: Guest leaves waiting room
         (uid == prev.guestUid && next.guestUid == '' && next.guestName == '' &&
          next.guestLevel == 0 && next.guestReady == false &&
          next.participantUids == [prev.hostUid] &&
-         changed.hasOnly(['guestUid', 'guestName', 'guestLevel', 'guestReady', 'participantUids', 'updatedAt'])) ||
-        // Action 4: Host changes map while waiting
+         changed.hasOnly(['guestUid', 'guestName', 'guestLevel', 'guestTank', 'guestReady', 'participantUids', 'updatedAt'])) ||
+        // Action 4: Host changes map or tank while waiting
         (uid == prev.hostUid && next.status == 'WAITING' &&
-         changed.hasOnly(['mapTheme', 'terrainSeed', 'updatedAt'])) ||
+         changed.hasOnly(['mapTheme', 'terrainSeed', 'hostTank', 'updatedAt'])) ||
         // Action 5: Host starts battle when guest is present
         (uid == prev.hostUid && prev.guestUid != '' && next.status == 'PLAYING' &&
          next.activeTurnUid == prev.hostUid &&
@@ -162,7 +170,7 @@ service cloud.firestore {
                          'winStreak', 'bestWinStreak', 'totalDamage', 'createdAt', 'updatedAt'
                        ]) &&
                        incoming().keys().hasOnly([
-                         'userId', 'nickname', 'listedInRanking', 'level', 'xp', 'totalXp',
+                         'userId', 'nickname', 'selectedTank', 'invitePushEnabled', 'listedInRanking', 'level', 'xp', 'totalXp',
                          'wins', 'losses', 'onlineWins', 'onlineLosses', 'rankPoints',
                          'winStreak', 'bestWinStreak', 'totalDamage', 'createdAt', 'updatedAt'
                        ]) &&
@@ -175,7 +183,7 @@ service cloud.firestore {
                        incoming().userId == existing().userId &&
                        incoming().createdAt == existing().createdAt &&
                        (
-                         incoming().diff(existing()).affectedKeys().hasOnly(['nickname', 'listedInRanking', 'updatedAt']) ||
+                         incoming().diff(existing()).affectedKeys().hasOnly(['nickname', 'selectedTank', 'invitePushEnabled', 'listedInRanking', 'updatedAt']) ||
                          incoming().diff(existing()).affectedKeys().hasOnly([
                            'level', 'xp', 'totalXp', 'wins', 'losses',
                            'onlineWins', 'onlineLosses', 'rankPoints',
@@ -216,8 +224,8 @@ service cloud.firestore {
                          'winnerUid', 'createdAt', 'updatedAt'
                        ]) &&
                        incoming().keys().hasOnly([
-                         'roomCode', 'roomTitle', 'hostUid', 'hostName', 'hostLevel',
-                         'guestUid', 'guestName', 'guestLevel', 'guestReady', 'participantUids',
+                         'roomCode', 'roomTitle', 'hostUid', 'hostName', 'hostLevel', 'hostTank',
+                         'guestUid', 'guestName', 'guestLevel', 'guestTank', 'guestReady', 'participantUids',
                          'mapTheme', 'terrainSeed', 'status', 'activeTurnUid', 'turnSeq',
                          'windForce', 'lastActionType', 'lastActionUid', 'lastTankX', 'lastTankY',
                          'lastFacingRight', 'lastAimAngle', 'lastPower', 'lastWeapon', 'lastUsedItem',
