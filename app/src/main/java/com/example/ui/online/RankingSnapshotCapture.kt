@@ -222,7 +222,7 @@ fun renderRankingSnapshotBitmap(
         textSize = 42f
         color = 0xFFFFD166.toInt()
     }
-    canvas.drawText(if (isKo) "캐논 대전 V2" else "CANNON BATTLE V2", 136f, 84f, titlePaint)
+    canvas.drawText(if (isKo) "탱크전쟁 V2" else "TANK WAR V2", 136f, 84f, titlePaint)
 
     val subTitlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         typeface = numberTypeface
@@ -569,7 +569,7 @@ fun renderRankingSnapshotBitmap(
         canvas.drawText("${player.rankPoints} RP", rowRect.right - 16f, rowRect.centerY() + 8f, rpPaint)
     }
 
-    // 8. 하단 푸터 (날짜/시간 + 제작자 구지초도형캠프 워터마크)
+    // 8. 하단 푸터 (날짜/시간 + 제작자 도형파파 워터마크)
     val dateStr = SimpleDateFormat("yyyy.MM.dd HH:mm", Locale.getDefault()).format(Date(capturedAtMillis))
     val footerLeftPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         typeface = numberTypeface
@@ -589,7 +589,7 @@ fun renderRankingSnapshotBitmap(
         textAlign = Paint.Align.RIGHT
         color = 0xFFFFD166.toInt()
     }
-    canvas.drawText("제작 · 구지초도형캠프", width - 56f, 686f, footerRightPaint)
+    canvas.drawText("제작 · 도형파파", width - 56f, 686f, footerRightPaint)
 
     return bitmap
 }
@@ -684,7 +684,7 @@ fun saveRankingBitmapToGallery(
 ): Result<String> {
     return runCatching {
         val stamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US).format(Date())
-        val prefix = if (isTopOne) "CannonBattle_TOP1_" else "CannonBattle_Rank_"
+        val prefix = if (isTopOne) "TankWar_TOP1_" else "TankWar_Rank_"
         val fileName = "$prefix$stamp.png"
         val isKo = language == AppLanguage.KO
 
@@ -693,7 +693,7 @@ fun saveRankingBitmapToGallery(
             val contentValues = ContentValues().apply {
                 put(MediaStore.Images.Media.DISPLAY_NAME, fileName)
                 put(MediaStore.Images.Media.MIME_TYPE, "image/png")
-                put(MediaStore.Images.Media.RELATIVE_PATH, "${Environment.DIRECTORY_PICTURES}/CannonBattle")
+                put(MediaStore.Images.Media.RELATIVE_PATH, "${Environment.DIRECTORY_PICTURES}/TankWar")
                 put(MediaStore.Images.Media.IS_PENDING, 1)
             }
             val uri = resolver.insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, contentValues)
@@ -712,11 +712,11 @@ fun saveRankingBitmapToGallery(
                 resolver.delete(uri, null, null)
                 throw t
             }
-            if (isKo) "갤러리(사진/CannonBattle)에 저장되었습니다!" else "Saved to Gallery (Pictures/CannonBattle)!"
+            if (isKo) "갤러리(사진/TankWar)에 저장되었습니다!" else "Saved to Gallery (Pictures/TankWar)!"
         } else {
             val dir = File(
                 context.getExternalFilesDir(Environment.DIRECTORY_PICTURES) ?: context.cacheDir,
-                "CannonBattle"
+                "TankWar"
             ).apply { mkdirs() }
             val outFile = File(dir, fileName)
             FileOutputStream(outFile).use { out ->
@@ -749,10 +749,10 @@ fun shareRankingBitmap(
         )
         val isKo = language == AppLanguage.KO
         val shareText = when {
-            isTopOne && isKo -> "캐논 대전 V2 랭킹 TOP 1 달성 기념! (제작 · 구지초도형캠프)"
-            isTopOne -> "Rank #1 Champion in Cannon Battle V2!"
-            isKo -> "캐논 대전 V2 나의 랭킹 순위 기록! (제작 · 구지초도형캠프)"
-            else -> "My Cannon Battle V2 Leaderboard Ranking!"
+            isTopOne && isKo -> "탱크전쟁 V2 랭킹 TOP 1 달성 기념! (제작 · 도형파파)"
+            isTopOne -> "Rank #1 Champion in Tank War V2!"
+            isKo -> "탱크전쟁 V2 나의 랭킹 순위 기록! (제작 · 도형파파)"
+            else -> "My Tank War V2 Leaderboard Ranking!"
         }
         val shareIntent = Intent(Intent.ACTION_SEND).apply {
             type = "image/png"

@@ -1,6 +1,7 @@
 package com.example
 
 import android.Manifest
+import android.app.Activity
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
@@ -53,6 +54,7 @@ import com.example.notifications.InviteNotificationManager
 import com.example.ui.battle.BattleCanvas
 import com.example.ui.battle.BattleHud
 import com.example.ui.battle.BattleViewModel
+import com.example.ui.battle.ExitAppConfirmDialog
 import com.example.ui.battle.GameOverOverlay
 import com.example.ui.battle.MapSelectCarouselOverlay
 import com.example.ui.battle.PauseOverlay
@@ -194,11 +196,13 @@ fun AuthenticatedCannonBattleScreen(
 
     var lobbyTabOpen by remember { mutableStateOf<LobbyTab?>(null) }
     var showTankSelector by remember { mutableStateOf(false) }
+    var showExitConfirmDialog by remember { mutableStateOf(false) }
     var pendingMapPickerMode by remember { mutableStateOf<PendingMapPickerMode?>(null) }
     var pushPermissionHint by remember { mutableStateOf<String?>(null) }
     var lastHandledInviteTapTs by remember { mutableLongStateOf(0L) }
     var startedOnlineRoomId by remember { mutableStateOf<String?>(null) }
     var lastAppliedTurnSeq by remember { mutableLongStateOf(0L) }
+    var lastAppliedLiveMoveSeq by remember { mutableLongStateOf(0L) }
     var matchRecordedForCurrentGame by remember { mutableStateOf(false) }
 
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
@@ -285,8 +289,11 @@ fun AuthenticatedCannonBattleScreen(
         }
     }
 
-    // BattleEngine -> Firestore 턴 전송 및 승패/경험치/레벨업 자동 기록 연결
+    // BattleEngine -> Firestore 실시간 이동·턴 전송 및 승패/경험치/레벨업 자동 기록 연결
     DisposableEffect(battleViewModel, onlineViewModel) {
+        battleViewModel.engine.onOnlineLivePoseChanged = { pose ->
+            onlineViewModel.syncOnlineLivePose(pose)
+        }
         battleViewModel.engine.onOnlineTurnSubmitted = { submission ->
             onlineViewModel.submitOnlineTurn(submission)
         }
@@ -312,12 +319,13 @@ fun AuthenticatedCannonBattleScreen(
             }
         }
         onDispose {
+            battleViewModel.engine.onOnlineLivePoseChanged = null
             battleViewModel.engine.onOnlineTurnSubmitted = null
             battleViewModel.engine.onMatchEnded = null
         }
     }
 
-    // Firestore 대기실 -> 실시간 온라인 배틀 시작 · 상대 턴 반영 · 기권/종료 동기화
+    // Firestore 대기실 -> 실시간 온라인 배틀 시작 · 상대 탱크 실시간 이동 반영 · 턴/기권/종료 동기화
     LaunchedEffect(activeRoom) {
         val room = activeRoom ?: return@LaunchedEffect
         when (room.status) {
@@ -325,6 +333,7 @@ fun AuthenticatedCannonBattleScreen(
                 if (startedOnlineRoomId != room.id) {
                     startedOnlineRoomId = room.id
                     lastAppliedTurnSeq = room.turnSeq
+                    lastAppliedLiveMoveSeq = room.liveMoveSeq
                     matchRecordedForCurrentGame = false
                     lobbyTabOpen = null
                     pendingMapPickerMode = null
@@ -332,11 +341,20 @@ fun AuthenticatedCannonBattleScreen(
                     battleViewModel.startOnlineMatch(room, currentUser.uid)
                 } else if (room.turnSeq > lastAppliedTurnSeq) {
                     lastAppliedTurnSeq = room.turnSeq
+                    lastAppliedLiveMoveSeq = maxOf(lastAppliedLiveMoveSeq, room.liveMoveSeq)
                     if (room.lastActionUid != currentUser.uid && room.lastActionType != "NONE") {
                         battleViewModel.applyRemoteTurn(room)
                     } else {
                         battleViewModel.syncOnlineWind(room.windForce.toInt())
                     }
+                } else if (
+                    room.liveMoveSeq > lastAppliedLiveMoveSeq &&
+                    room.liveUid.isNotBlank() &&
+                    room.liveUid != currentUser.uid &&
+                    room.liveUid == room.activeTurnUid
+                ) {
+                    lastAppliedLiveMoveSeq = room.liveMoveSeq
+                    battleViewModel.applyRemoteLivePose(room)
                 }
             }
             "FINISHED" -> {
@@ -380,7 +398,8 @@ fun AuthenticatedCannonBattleScreen(
     val isLobbyVisible = lobbyTabOpen != null && !isInWaitingRoom && hudState.turnPhase == TurnPhase.TITLE
 
     BackHandler(
-        enabled = hudState.turnPhase != TurnPhase.TITLE ||
+        enabled = showExitConfirmDialog ||
+            hudState.turnPhase != TurnPhase.TITLE ||
             hudState.showSettings ||
             hudState.showTutorial ||
             showTankSelector ||
@@ -389,6 +408,7 @@ fun AuthenticatedCannonBattleScreen(
             isLobbyVisible
     ) {
         when {
+            showExitConfirmDialog -> showExitConfirmDialog = false
             pendingMapPickerMode != null -> pendingMapPickerMode = null
             showTankSelector -> showTankSelector = false
             hudState.showSettings -> battleViewModel.setShowSettings(false)
@@ -463,7 +483,8 @@ fun AuthenticatedCannonBattleScreen(
                     )
                 },
                 onOpenTutorial = { battleViewModel.setShowTutorial(true) },
-                onOpenSettings = { battleViewModel.setShowSettings(true) }
+                onOpenSettings = { battleViewModel.setShowSettings(true) },
+                onExitApp = { showExitConfirmDialog = true }
             )
         }
 
@@ -692,6 +713,7 @@ fun AuthenticatedCannonBattleScreen(
 
         // 최초 로그인 시 1회성 친구 초대 푸시 알림 수신 선택 다이얼로그
         if (!showSplash &&
+            !showExitConfirmDialog &&
             !settings.pushOptInPrompted &&
             hudState.turnPhase == TurnPhase.TITLE &&
             !isInWaitingRoom &&
@@ -705,6 +727,19 @@ fun AuthenticatedCannonBattleScreen(
                 language = settings.language,
                 onAllowPush = { handleToggleInvitePush(true) },
                 onDeclinePush = { handleToggleInvitePush(false) }
+            )
+        }
+
+        if (showExitConfirmDialog) {
+            ExitAppConfirmDialog(
+                language = settings.language,
+                onConfirmExit = {
+                    showExitConfirmDialog = false
+                    onlineViewModel.leaveOrCloseActiveRoom()
+                    val activity = context as? Activity
+                    activity?.finishAndRemoveTask() ?: activity?.finishAffinity()
+                },
+                onDismiss = { showExitConfirmDialog = false }
             )
         }
 

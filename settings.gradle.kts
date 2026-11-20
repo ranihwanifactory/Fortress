@@ -22,6 +22,6 @@ dependencyResolutionManagement {
   }
 }
 
-rootProject.name = "CannonBattle"
+rootProject.name = "TankWar"
 
 include(":app")

@@ -92,6 +92,13 @@ service cloud.firestore {
              isValidWeapon(data.lastWeapon) &&
              isValidItem(data.lastUsedItem) &&
              data.winnerUid is string && data.winnerUid.size() <= 128 &&
+             (!('liveUid' in data) || (data.liveUid is string && data.liveUid.size() <= 128)) &&
+             (!('liveTankX' in data) || (data.liveTankX is number && data.liveTankX >= 0 && data.liveTankX <= 3000)) &&
+             (!('liveTankY' in data) || (data.liveTankY is number && data.liveTankY >= 0 && data.liveTankY <= 1500)) &&
+             (!('liveFacingRight' in data) || data.liveFacingRight is bool) &&
+             (!('liveAimAngle' in data) || (data.liveAimAngle is number && data.liveAimAngle >= 0 && data.liveAimAngle <= 90)) &&
+             (!('liveFuel' in data) || (data.liveFuel is number && data.liveFuel >= 0 && data.liveFuel <= 200)) &&
+             (!('liveMoveSeq' in data) || (data.liveMoveSeq is int && data.liveMoveSeq >= 0 && data.liveMoveSeq <= 1000000)) &&
              data.createdAt is timestamp && data.createdAt <= request.time &&
              data.updatedAt is timestamp && data.updatedAt <= request.time;
     }
@@ -149,11 +156,24 @@ service cloud.firestore {
          ])) ||
         // Action 7: Participant finishes match or forfeits (terminal state)
         (next.status == 'FINISHED' && next.winnerUid in prev.participantUids &&
-         changed.hasOnly(['status', 'winnerUid', 'lastActionType', 'lastActionUid', 'updatedAt']))
+         changed.hasOnly(['status', 'winnerUid', 'lastActionType', 'lastActionUid', 'updatedAt'])) ||
+        // Action 8: Active player streams live tank position, facing, aim angle, and fuel during their turn
+        (prev.activeTurnUid == uid && next.status == 'PLAYING' &&
+         next.activeTurnUid == prev.activeTurnUid &&
+         next.turnSeq == prev.turnSeq &&
+         next.liveUid == uid &&
+         changed.hasOnly([
+           'liveUid', 'liveTankX', 'liveTankY', 'liveFacingRight',
+           'liveAimAngle', 'liveFuel', 'liveMoveSeq', 'updatedAt'
+         ]))
       );
     }
 
-    // 4. Player Profiles & Leaderboard (non-PII gaming stats)
+    function canUpdateMatchRoom(uid, prev, next) {
+      return prev.status == 'WAITING'
+        ? canWaitingRoomUpdate(uid, prev, next, next.diff(prev).affectedKeys())
+        : (prev.status == 'PLAYING' && canPlayingRoomUpdate(uid, prev, next, next.diff(prev).affectedKeys()));
+    }
     match /player_profiles/{userId} {
       allow get: if isSignedIn() && isValidId(userId) &&
                     (request.auth.uid == userId || existing().listedInRanking == true);
@@ -229,26 +249,18 @@ service cloud.firestore {
                          'mapTheme', 'terrainSeed', 'status', 'activeTurnUid', 'turnSeq',
                          'windForce', 'lastActionType', 'lastActionUid', 'lastTankX', 'lastTankY',
                          'lastFacingRight', 'lastAimAngle', 'lastPower', 'lastWeapon', 'lastUsedItem',
-                         'winnerUid', 'createdAt', 'updatedAt'
+                         'winnerUid', 'liveUid', 'liveTankX', 'liveTankY', 'liveFacingRight',
+                         'liveAimAngle', 'liveFuel', 'liveMoveSeq', 'createdAt', 'updatedAt'
                        ]);
 
       allow update: if isSignedIn() &&
                        isValidId(roomId) &&
-                       isValidMatchRoom(incoming()) &&
                        existing().status != 'FINISHED' &&
                        incoming().hostUid == existing().hostUid &&
                        incoming().roomCode == existing().roomCode &&
                        incoming().createdAt == existing().createdAt &&
-                       (
-                         canWaitingRoomUpdate(
-                           request.auth.uid, existing(), incoming(),
-                           incoming().diff(existing()).affectedKeys()
-                         ) ||
-                         canPlayingRoomUpdate(
-                           request.auth.uid, existing(), incoming(),
-                           incoming().diff(existing()).affectedKeys()
-                         )
-                       );
+                       canUpdateMatchRoom(request.auth.uid, existing(), incoming()) &&
+                       isValidMatchRoom(incoming());
 
       allow delete: if isSignedIn() &&
                        isValidId(roomId) &&

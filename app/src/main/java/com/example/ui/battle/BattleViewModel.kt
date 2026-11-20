@@ -148,6 +148,17 @@ class BattleViewModel(application: Application) : AndroidViewModel(application) 
         syncStates()
     }
 
+    fun applyRemoteLivePose(room: MatchRoom) {
+        engine.applyRemoteLivePose(
+            tankX = room.liveTankX.toFloat(),
+            tankY = room.liveTankY.toFloat(),
+            facingRight = room.liveFacingRight,
+            aimAngleDeg = room.liveAimAngle.toFloat(),
+            fuel = room.liveFuel.toFloat()
+        )
+        syncStates()
+    }
+
     fun syncOnlineWind(nextWindForce: Int) {
         engine.syncOnlineWind(nextWindForce)
         syncStates()

@@ -358,6 +358,13 @@ class OnlineGameRepository(
                 "lastWeapon" to WeaponType.STANDARD.name,
                 "lastUsedItem" to "",
                 "winnerUid" to "",
+                "liveUid" to "",
+                "liveTankX" to 320.0,
+                "liveTankY" to 500.0,
+                "liveFacingRight" to true,
+                "liveAimAngle" to 45.0,
+                "liveFuel" to 100.0,
+                "liveMoveSeq" to 0L,
                 "createdAt" to FieldValue.serverTimestamp(),
                 "updatedAt" to FieldValue.serverTimestamp()
             )
@@ -623,6 +630,40 @@ class OnlineGameRepository(
             throw e
         } catch (e: Exception) {
             handleFirestoreError(e, OperationType.UPDATE, path)
+            Result.failure(e)
+        }
+    }
+
+    suspend fun updateLiveTankPose(
+        roomId: String,
+        tankX: Float,
+        tankY: Float,
+        facingRight: Boolean,
+        aimAngleDeg: Float,
+        fuel: Float,
+        moveSeq: Long
+    ): Result<Unit> {
+        return try {
+            val uid = requireUserId()
+            if (roomId.isBlank()) return Result.success(Unit)
+            db.collection(COL_ROOMS).document(roomId)
+                .update(
+                    mapOf(
+                        "liveUid" to uid,
+                        "liveTankX" to tankX.toDouble().coerceIn(0.0, 3000.0),
+                        "liveTankY" to tankY.toDouble().coerceIn(0.0, 1500.0),
+                        "liveFacingRight" to facingRight,
+                        "liveAimAngle" to aimAngleDeg.toDouble().coerceIn(0.0, 90.0),
+                        "liveFuel" to fuel.toDouble().coerceIn(0.0, 200.0),
+                        "liveMoveSeq" to moveSeq.coerceIn(0L, 1_000_000L),
+                        "updatedAt" to FieldValue.serverTimestamp()
+                    )
+                ).await()
+            Result.success(Unit)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            // 턴 전환 직후 발생하는 경미한 경합은 조용히 무시
             Result.failure(e)
         }
     }

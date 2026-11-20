@@ -157,17 +157,17 @@ fun AuthScreen(
                 ) {
                     Box {
                         Text(
-                            text = "캐논 대전",
+                            text = "탱크전쟁",
                             style = TextStyle(fontFamily = JuaFontFamily, fontSize = 46.sp, color = Color(0xFF4A1500)),
                             modifier = Modifier.offset(x = 3.dp, y = 4.dp)
                         )
                         Text(
-                            text = "캐논 대전",
+                            text = "탱크전쟁",
                             style = TextStyle(fontFamily = JuaFontFamily, fontSize = 46.sp, color = Color.White),
                             modifier = Modifier.offset(x = (-1.5).dp, y = (-1.5).dp)
                         )
                         Text(
-                            text = "캐논 대전",
+                            text = "탱크전쟁",
                             style = TextStyle(
                                 fontFamily = JuaFontFamily,
                                 fontSize = 46.sp,
@@ -199,7 +199,7 @@ fun AuthScreen(
 
                 Image(
                     painter = painterResource(id = R.drawable.cannon_app_icon),
-                    contentDescription = "캐논 대전 대표 탱크",
+                    contentDescription = "탱크전쟁 대표 탱크",
                     modifier = Modifier
                         .size(106.dp)
                         .clip(RoundedCornerShape(26.dp))
@@ -217,7 +217,7 @@ fun AuthScreen(
                         .testTag("auth_creator_badge")
                 ) {
                     Text(
-                        text = "제작 · 구지초도형캠프",
+                        text = "제작 · 도형파파",
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.Bold,
                         color = PrimaryGold

@@ -9,6 +9,7 @@ import com.example.firebase.OnlineGameRepository
 import com.example.firebase.OnlineUiState
 import com.example.firebase.PlayerProfile
 import com.example.firebase.RoomInvite
+import com.example.game.engine.OnlineLiveTankPose
 import com.example.game.engine.OnlineTurnSubmission
 import com.example.game.model.Difficulty
 import com.example.game.model.MapTheme
@@ -16,6 +17,7 @@ import com.example.game.model.TankType
 import com.google.firebase.firestore.FirebaseFirestoreException
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -127,6 +129,9 @@ class OnlineViewModel(
 
     private val seenInviteIds = mutableSetOf<String>()
     private var initialInvitesSeeded = false
+    private var livePoseJob: Job? = null
+    private var pendingLivePose: OnlineLiveTankPose? = null
+    private var localLiveMoveSeq = 0L
 
     init {
         viewModelScope.launch {
@@ -270,6 +275,10 @@ class OnlineViewModel(
     }
 
     fun leaveOrCloseActiveRoom() {
+        livePoseJob?.cancel()
+        livePoseJob = null
+        pendingLivePose = null
+        localLiveMoveSeq = 0L
         val room = activeRoomState.value
         _activeRoomId.value = null
         if (room == null) return
@@ -286,6 +295,10 @@ class OnlineViewModel(
     }
 
     fun clearActiveRoomLocal() {
+        livePoseJob?.cancel()
+        livePoseJob = null
+        pendingLivePose = null
+        localLiveMoveSeq = 0L
         _activeRoomId.value = null
     }
 
@@ -355,7 +368,37 @@ class OnlineViewModel(
         }
     }
 
+    fun syncOnlineLivePose(pose: OnlineLiveTankPose) {
+        val room = activeRoomState.value ?: return
+        if (room.status != "PLAYING" || room.activeTurnUid != currentUserId) return
+        pendingLivePose = pose
+        if (livePoseJob?.isActive == true) return
+
+        livePoseJob = viewModelScope.launch {
+            while (true) {
+                val nextPose = pendingLivePose ?: break
+                pendingLivePose = null
+                val latestRoom = activeRoomState.value ?: break
+                if (latestRoom.status != "PLAYING" || latestRoom.activeTurnUid != currentUserId) break
+                val nextSeq = maxOf(localLiveMoveSeq + 1L, latestRoom.liveMoveSeq + 1L)
+                localLiveMoveSeq = nextSeq
+                repository.updateLiveTankPose(
+                    roomId = latestRoom.id,
+                    tankX = nextPose.tankX,
+                    tankY = nextPose.tankY,
+                    facingRight = nextPose.facingRight,
+                    aimAngleDeg = nextPose.aimAngleDeg,
+                    fuel = nextPose.fuel,
+                    moveSeq = nextSeq
+                )
+            }
+        }
+    }
+
     fun submitOnlineTurn(submission: OnlineTurnSubmission) {
+        livePoseJob?.cancel()
+        livePoseJob = null
+        pendingLivePose = null
         val room = activeRoomState.value ?: return
         if (room.status != "PLAYING" || room.activeTurnUid != currentUserId) return
         viewModelScope.launch {

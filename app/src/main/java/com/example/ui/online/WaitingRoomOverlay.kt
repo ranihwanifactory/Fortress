@@ -178,9 +178,9 @@ fun WaitingRoomOverlay(
                     CartoonActionButton(
                         onClick = {
                             val shareText = if (isKo) {
-                                "[캐논 대전] 1:1 온라인 대포 대전에 초대합니다! 대기실 초대 코드: ${room.roomCode}"
+                                "[탱크전쟁] 1:1 온라인 탱크 대전에 초대합니다! 대기실 초대 코드: ${room.roomCode}"
                             } else {
-                                "[Cannon Battle] Join my 1v1 match! Room Invite Code: ${room.roomCode}"
+                                "[Tank War] Join my 1v1 match! Room Invite Code: ${room.roomCode}"
                             }
                             val intent = Intent(Intent.ACTION_SEND).apply {
                                 type = "text/plain"

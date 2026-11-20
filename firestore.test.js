@@ -287,6 +287,48 @@ test("MatchRoom: full multiplayer lifecycle (create, list lobby, join, ready, st
     })
   );
 
+  // 5b. Active player (Alice) streams real-time tank movement pose during her turn
+  await assertSucceeds(
+    aliceDb.collection("match_rooms").doc("room_1").update({
+      liveUid: ALICE_UID,
+      liveTankX: 356.5,
+      liveTankY: 492.0,
+      liveFacingRight: true,
+      liveAimAngle: 51.0,
+      liveFuel: 78.5,
+      liveMoveSeq: 1,
+      updatedAt: t3,
+    })
+  );
+
+  // Non-active player (Bob) CANNOT spoof live tank movement while it is Alice's turn
+  await assertFails(
+    bobDb.collection("match_rooms").doc("room_1").update({
+      liveUid: BOB_UID,
+      liveTankX: 1800.0,
+      liveTankY: 480.0,
+      liveFacingRight: false,
+      liveAimAngle: 42.0,
+      liveFuel: 90.0,
+      liveMoveSeq: 2,
+      updatedAt: t3,
+    })
+  );
+
+  // Active player CANNOT submit out-of-range coordinates via live pose update
+  await assertFails(
+    aliceDb.collection("match_rooms").doc("room_1").update({
+      liveUid: ALICE_UID,
+      liveTankX: 9999.0,
+      liveTankY: 492.0,
+      liveFacingRight: true,
+      liveAimAngle: 51.0,
+      liveFuel: 78.5,
+      liveMoveSeq: 2,
+      updatedAt: t3,
+    })
+  );
+
   // 6. Active player (Alice) submits turn 1 shot
   await assertSucceeds(
     aliceDb.collection("match_rooms").doc("room_1").update({

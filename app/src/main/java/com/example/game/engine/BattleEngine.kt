@@ -61,6 +61,14 @@ data class OnlineTurnSubmission(
     val usedItem: ItemType?
 )
 
+data class OnlineLiveTankPose(
+    val tankX: Float,
+    val tankY: Float,
+    val facingRight: Boolean,
+    val aimAngleDeg: Float,
+    val fuel: Float
+)
+
 /**
  * 7종 무기 + 파괴 가능한 성벽/공중발판 + 인터랙티브 지형지물 + 온라인 실시간 턴제 PvP를 지원하는 전투 엔진.
  */
@@ -140,7 +148,21 @@ class BattleEngine {
     private var localTankIndex = 0
     private var pendingOnlineItemUsed: ItemType? = null
     private var pendingOnlineWind: Int? = null
+    private var livePoseEmitTimer = 0f
+    private var lastEmittedX = Float.NaN
+    private var lastEmittedY = Float.NaN
+    private var lastEmittedFacing = true
+    private var lastEmittedAimAngle = Float.NaN
+    private var lastEmittedFuel = Float.NaN
+    private var hasRemoteLiveTarget = false
+    private var remoteTargetX = 0f
+    private var remoteTargetY = 0f
+    private var remoteTargetFacing = true
+    private var remoteTargetAimAngle = 45f
+    private var remoteTargetFuel = 100f
+    private var remoteDustTimer = 0f
     var onOnlineTurnSubmitted: ((OnlineTurnSubmission) -> Unit)? = null
+    var onOnlineLivePoseChanged: ((OnlineLiveTankPose) -> Unit)? = null
     var onMatchEnded: ((winnerId: Int?, localWon: Boolean, damageDealt: Int, mode: GameMode, diff: Difficulty) -> Unit)? = null
 
     init {
@@ -267,6 +289,17 @@ class BattleEngine {
         manualPanTimer = 0f
         shakeTimer = 0f
         fireworkTimer = 0f
+        resetLiveSyncState()
+    }
+
+    private fun resetLiveSyncState() {
+        livePoseEmitTimer = 0f
+        lastEmittedX = Float.NaN
+        lastEmittedY = Float.NaN
+        lastEmittedAimAngle = Float.NaN
+        lastEmittedFuel = Float.NaN
+        hasRemoteLiveTarget = false
+        remoteDustTimer = 0f
     }
 
     private fun setupTanks(
@@ -475,6 +508,7 @@ class BattleEngine {
         moveDirInput = 0
         angleDirInput = 0
         manualPanTimer = 0f
+        resetLiveSyncState()
 
         var t = tanks[tankIdx]
         val updatedCooldowns = t.weaponCooldowns.mapValues { (_, cd) -> max(0, cd - 1) }
@@ -587,6 +621,7 @@ class BattleEngine {
         val idx = activeTankIndex
         if (idx == localTankIndex) return
         pendingOnlineWind = nextWindForce.coerceIn(-10, 10)
+        hasRemoteLiveTarget = false
 
         var remoteTank = tanks[idx]
         val safeX = tankX.coerceIn(36f, terrain.worldWidth - 36f)
@@ -642,21 +677,90 @@ class BattleEngine {
         }
     }
 
+    /**
+     * 온라인 상대방이 이동·조준·방향 전환할 때 Firestore에서 수신된 실시간 포즈를 부드럽게 반영합니다.
+     */
+    fun applyRemoteLivePose(
+        tankX: Float,
+        tankY: Float,
+        facingRight: Boolean,
+        aimAngleDeg: Float,
+        fuel: Float
+    ) {
+        if (gameMode != GameMode.ONLINE_PVP || turnPhase != TurnPhase.PLAYER_AIMING) return
+        val idx = activeTankIndex
+        if (idx == localTankIndex) return
+        val remoteTank = tanks.getOrNull(idx) ?: return
+
+        remoteTargetX = tankX.coerceIn(36f, terrain.worldWidth - 36f)
+        remoteTargetY = tankY.coerceIn(40f, terrain.worldHeight - 10f)
+        remoteTargetFacing = facingRight
+        remoteTargetAimAngle = aimAngleDeg.coerceIn(0f, 90f)
+        remoteTargetFuel = fuel.coerceIn(0f, remoteTank.maxFuel.coerceAtLeast(100f))
+        hasRemoteLiveTarget = true
+
+        // 방향 전환은 지연 없이 즉각 반영
+        if (remoteTank.facingRight != facingRight) {
+            tanks[idx] = remoteTank.copy(facingRight = facingRight)
+        }
+    }
+
+    private fun maybeEmitOnlineLivePose(tank: TankState, forceImmediate: Boolean = false) {
+        if (gameMode != GameMode.ONLINE_PVP || turnPhase != TurnPhase.PLAYER_AIMING) return
+        if (activeTankIndex != localTankIndex) return
+        val callback = onOnlineLivePoseChanged ?: return
+
+        val changed = lastEmittedX.isNaN() ||
+            abs(tank.x - lastEmittedX) >= 2.5f ||
+            abs(tank.y - lastEmittedY) >= 2.5f ||
+            abs(tank.aimAngleDeg - lastEmittedAimAngle) >= 1.2f ||
+            tank.facingRight != lastEmittedFacing ||
+            abs(tank.fuel - lastEmittedFuel) >= 2.5f
+
+        if (!changed) return
+        if (!forceImmediate && livePoseEmitTimer < LIVE_POSE_SYNC_INTERVAL_SEC) return
+
+        livePoseEmitTimer = 0f
+        lastEmittedX = tank.x
+        lastEmittedY = tank.y
+        lastEmittedFacing = tank.facingRight
+        lastEmittedAimAngle = tank.aimAngleDeg
+        lastEmittedFuel = tank.fuel
+
+        callback.invoke(
+            OnlineLiveTankPose(
+                tankX = tank.x,
+                tankY = tank.y,
+                facingRight = tank.facingRight,
+                aimAngleDeg = tank.aimAngleDeg,
+                fuel = tank.fuel
+            )
+        )
+    }
+
     // --- 입력 제어 ---
 
     fun setMoveInput(dir: Int) {
+        val prevDir = moveDirInput
         if (turnPhase == TurnPhase.PLAYER_AIMING && !isPaused && canLocalControlActiveTank()) {
             moveDirInput = dir
             if (dir != 0) manualPanTimer = 0f
+            if (prevDir != 0 && dir == 0) {
+                tanks.getOrNull(activeTankIndex)?.let { maybeEmitOnlineLivePose(it, forceImmediate = true) }
+            }
         } else {
             moveDirInput = 0
         }
     }
 
     fun setAngleInput(dir: Int) {
+        val prevDir = angleDirInput
         if (turnPhase == TurnPhase.PLAYER_AIMING && !isPaused && canLocalControlActiveTank()) {
             angleDirInput = dir
             if (dir != 0) manualPanTimer = 0f
+            if (prevDir != 0 && dir == 0) {
+                tanks.getOrNull(activeTankIndex)?.let { maybeEmitOnlineLivePose(it, forceImmediate = true) }
+            }
         } else {
             angleDirInput = 0
         }
@@ -665,8 +769,10 @@ class BattleEngine {
     fun toggleFacing() {
         if (turnPhase != TurnPhase.PLAYER_AIMING || isPaused || !canLocalControlActiveTank()) return
         val t = tanks[activeTankIndex]
-        tanks[activeTankIndex] = t.copy(facingRight = !t.facingRight)
+        val flipped = t.copy(facingRight = !t.facingRight)
+        tanks[activeTankIndex] = flipped
         manualPanTimer = 0f
+        maybeEmitOnlineLivePose(flipped, forceImmediate = true)
     }
 
     fun selectWeapon(weapon: WeaponType) {
@@ -685,6 +791,9 @@ class BattleEngine {
         applyItemEffect(idx, item)
         if (gameMode == GameMode.ONLINE_PVP) {
             pendingOnlineItemUsed = item
+            if (item == ItemType.FUEL_BOOST) {
+                maybeEmitOnlineLivePose(tanks[idx], forceImmediate = true)
+            }
         }
     }
 
@@ -712,6 +821,7 @@ class BattleEngine {
     fun startCharging() {
         if (turnPhase != TurnPhase.PLAYER_AIMING || isPaused || !canLocalControlActiveTank()) return
         val t = tanks[activeTankIndex]
+        maybeEmitOnlineLivePose(t, forceImmediate = true)
         moveDirInput = 0
         angleDirInput = 0
         manualPanTimer = 0f
@@ -1007,9 +1117,65 @@ class BattleEngine {
         tanks[idx] = t
 
         if (gameMode == GameMode.ONLINE_PVP && idx != localTankIndex) {
-            // 상대방 턴: 표시용 타이머만 1초에서 대기하고 원격 액션을 기다림
+            // 상대방 턴: 실시간 수신된 상대 탱크 위치·포신 각도·연료를 부드럽게 보간 반영
+            if (hasRemoteLiveTarget && !t.isFalling) {
+                val smoothFactor = min(1f, dt * 14f)
+                val nextX = if (abs(remoteTargetX - t.x) < 0.4f) {
+                    remoteTargetX
+                } else {
+                    lerp(t.x, remoteTargetX, smoothFactor)
+                }
+                val snappedY = terrain.findGroundY(nextX, t.y, maxStepUp = 24f)
+                    ?: lerp(t.y, remoteTargetY, smoothFactor)
+                val nextAim = if (abs(remoteTargetAimAngle - t.aimAngleDeg) < 0.2f) {
+                    remoteTargetAimAngle
+                } else {
+                    lerp(t.aimAngleDeg, remoteTargetAimAngle, smoothFactor)
+                }
+                val nextFuel = lerp(t.fuel, remoteTargetFuel, smoothFactor)
+                val nextSlope = lerp(
+                    t.slopeAngleDeg,
+                    terrain.computeSlopeAngleDeg(nextX, snappedY),
+                    min(1f, dt * 12f)
+                )
+
+                // 상대방 탱크가 실제로 이동 중일 때 바퀴 흙먼지 파티클 표시
+                val movedDx = nextX - t.x
+                remoteDustTimer = max(0f, remoteDustTimer - dt)
+                if (abs(movedDx) > 0.35f && remoteDustTimer <= 0f) {
+                    remoteDustTimer = 0.085f
+                    val trailDir = if (movedDx > 0f) -1f else 1f
+                    particles.add(
+                        ParticleState(
+                            x = nextX + trailDir * 16f,
+                            y = snappedY - 3f,
+                            vx = trailDir * (22f + Random.nextFloat() * 24f),
+                            vy = -18f - Random.nextFloat() * 20f,
+                            radius = 3.2f + Random.nextFloat() * 2.5f,
+                            color = Color(mapTheme.soilA),
+                            lifetime = 0.32f,
+                            gravityScale = 0.25f,
+                            isSmoke = true
+                        )
+                    )
+                }
+
+                tanks[idx] = t.copy(
+                    x = nextX,
+                    y = snappedY,
+                    facingRight = remoteTargetFacing,
+                    aimAngleDeg = nextAim,
+                    fuel = nextFuel,
+                    slopeAngleDeg = nextSlope
+                )
+            }
             turnTimeRemaining = max(1f, turnTimeRemaining - dt)
             return
+        }
+
+        if (gameMode == GameMode.ONLINE_PVP && idx == localTankIndex) {
+            livePoseEmitTimer += dt
+            maybeEmitOnlineLivePose(t, forceImmediate = false)
         }
 
         turnTimeRemaining -= dt
@@ -2074,5 +2240,6 @@ class BattleEngine {
         const val TANK_MOVE_SPEED = 115f
         const val FUEL_BURN_PER_SEC = 34f
         const val ANGLE_CHANGE_SPEED = 48f
+        const val LIVE_POSE_SYNC_INTERVAL_SEC = 0.12f
     }
 }

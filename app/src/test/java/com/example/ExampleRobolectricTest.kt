@@ -25,6 +25,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import com.example.notifications.InviteNotificationManager
 import com.example.ui.battle.MapSelectCarouselOverlay
+import com.example.ui.battle.TitleOverlay
 import com.example.ui.battle.description
 import com.example.ui.battle.featureTags
 import com.example.ui.battle.previewDrawableRes
@@ -51,7 +52,7 @@ class ExampleRobolectricTest {
     fun `read string from context`() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val appName = context.getString(R.string.app_name)
-        assertEquals("캐논 대전", appName)
+        assertEquals("탱크전쟁", appName)
     }
 
     @Test
@@ -367,5 +368,112 @@ class ExampleRobolectricTest {
 
         composeTestRule.waitForIdle()
         assertEquals(MapTheme.DESERT, confirmedMap)
+    }
+
+    @Test
+    fun `title overlay renders cartoon frames vertical divider and all action buttons cleanly`() {
+        val sampleProfile = PlayerProfile(
+            id = "u_1",
+            userId = "u_1",
+            nickname = "도형사령관",
+            level = 4L,
+            xp = 60L,
+            wins = 10L,
+            losses = 2L,
+            rankPoints = 1280L
+        )
+        composeTestRule.setContent {
+            CannonBattleTheme {
+                TitleOverlay(
+                    selectedDifficulty = Difficulty.NORMAL,
+                    selectedMap = MapTheme.GRASSLAND,
+                    selectedTank = TankType.MEGA_TITAN,
+                    language = AppLanguage.KO,
+                    profile = sampleProfile,
+                    pendingInviteCount = 1,
+                    onSelectDifficulty = {},
+                    onOpenMapPreview = {},
+                    onOpenTankSelector = {},
+                    onStartAiMatch = {},
+                    onStartLocalMatch = {},
+                    onOpenOnlineLobby = {},
+                    onOpenRankings = {},
+                    onSignOut = {},
+                    onOpenTutorial = {},
+                    onOpenSettings = {},
+                    onExitApp = {}
+                )
+            }
+        }
+
+        composeTestRule.onNodeWithTag("title_vertical_cartoon_divider").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("title_battle_hq_panel").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("commander_profile_pill").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("open_tank_selector_button").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("creator_credit_badge").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("open_online_lobby_button").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("start_ai_button").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("start_local_button").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("tutorial_button").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("exit_app_button")
+            .assertIsDisplayed()
+            .assertWidthIsAtLeast(48.dp)
+    }
+
+    @Test
+    fun `online real-time tank movement emits live pose and smoothly updates opponent screen`() {
+        val hostEngine = BattleEngine()
+        val guestEngine = BattleEngine()
+        val sharedSeed = 11223344L
+
+        val emittedPoses = mutableListOf<com.example.game.engine.OnlineLiveTankPose>()
+        hostEngine.onOnlineLivePoseChanged = { emittedPoses.add(it) }
+
+        hostEngine.startOnlineMatch(
+            seed = sharedSeed,
+            theme = MapTheme.GRASSLAND,
+            hostName = "호스트",
+            guestName = "게스트",
+            localIsHost = true,
+            initialWindForce = 0
+        )
+        guestEngine.startOnlineMatch(
+            seed = sharedSeed,
+            theme = MapTheme.GRASSLAND,
+            hostName = "호스트",
+            guestName = "게스트",
+            localIsHost = false,
+            initialWindForce = 0
+        )
+
+        val initialHostX = hostEngine.buildHudState().tanks[0].x
+        val initialGuestSeenHostX = guestEngine.buildHudState().tanks[0].x
+        assertEquals(initialHostX, initialGuestSeenHostX, 0.01f)
+
+        // Host drives right and tilts barrel up for ~0.45 seconds
+        hostEngine.setMoveInput(1)
+        hostEngine.setAngleInput(1)
+        repeat(15) { hostEngine.step(0.03f) }
+        hostEngine.setMoveInput(0)
+        hostEngine.setAngleInput(0)
+
+        assertTrue("Host should emit real-time live poses during movement", emittedPoses.isNotEmpty())
+        val latestPose = emittedPoses.last()
+        assertTrue(latestPose.tankX > initialHostX + 10f)
+
+        // Guest applies the live pose and steps several frames -> host tank smoothly glides on guest screen
+        guestEngine.applyRemoteLivePose(
+            tankX = latestPose.tankX,
+            tankY = latestPose.tankY,
+            facingRight = latestPose.facingRight,
+            aimAngleDeg = latestPose.aimAngleDeg,
+            fuel = latestPose.fuel
+        )
+        repeat(20) { guestEngine.step(0.03f) }
+
+        val updatedGuestHostTank = guestEngine.buildHudState().tanks[0]
+        assertEquals(latestPose.tankX, updatedGuestHostTank.x, 2.0f)
+        assertEquals(latestPose.aimAngleDeg, updatedGuestHostTank.aimAngleDeg, 1.5f)
+        assertEquals(latestPose.facingRight, updatedGuestHostTank.facingRight)
     }
 }

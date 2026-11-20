@@ -384,7 +384,7 @@ fun SplashScreen(
                 ) {
                     Image(
                         painter = painterResource(id = R.drawable.cannon_app_icon),
-                        contentDescription = "캐논 대전 아이콘",
+                        contentDescription = "탱크전쟁 아이콘",
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize()
                     )
@@ -395,7 +395,7 @@ fun SplashScreen(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
-                    CartoonOutlinedTitle(text = "캐논 대전")
+                    CartoonOutlinedTitle(text = "탱크전쟁")
 
                     // Fortress V2 스타일의 메탈 에메랄드 V2 배지
                     Box(
@@ -491,7 +491,7 @@ fun SplashScreen(
                             .padding(horizontal = 12.dp, vertical = 4.dp)
                     ) {
                         Text(
-                            text = "제작 · 구지초도형캠프",
+                            text = "제작 · 도형파파",
                             style = MaterialTheme.typography.labelMedium,
                             color = PrimaryGold,
                             fontWeight = FontWeight.Bold

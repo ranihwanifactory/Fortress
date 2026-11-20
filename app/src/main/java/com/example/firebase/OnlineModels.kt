@@ -197,6 +197,13 @@ data class MatchRoom(
     val lastWeapon: String = WeaponType.STANDARD.name,
     val lastUsedItem: String = "",
     val winnerUid: String = "",
+    val liveUid: String = "",
+    val liveTankX: Double = 320.0,
+    val liveTankY: Double = 500.0,
+    val liveFacingRight: Boolean = true,
+    val liveAimAngle: Double = 45.0,
+    val liveFuel: Double = 100.0,
+    val liveMoveSeq: Long = 0L,
     @ServerTimestamp val createdAt: Timestamp? = null,
     @ServerTimestamp val updatedAt: Timestamp? = null
 ) {

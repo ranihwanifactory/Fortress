@@ -76,6 +76,13 @@
         "lastWeapon": { "type": "string", "enum": ["STANDARD", "DOUBLE", "POWER", "WATER", "POOP", "GAS", "TRASH"], "description": "Weapon fired on the last turn." },
         "lastUsedItem": { "type": "string", "enum": ["", "HEAL", "FUEL_BOOST", "SHIELD"], "description": "Item activated before firing, if any." },
         "winnerUid": { "type": "string", "description": "UID of the match winner once FINISHED." },
+        "liveUid": { "type": "string", "description": "UID of the active player currently streaming real-time tank movement." },
+        "liveTankX": { "type": "number", "description": "Live world X coordinate of the moving active tank." },
+        "liveTankY": { "type": "number", "description": "Live world Y coordinate of the moving active tank." },
+        "liveFacingRight": { "type": "boolean", "description": "Live facing direction of the moving active tank." },
+        "liveAimAngle": { "type": "number", "description": "Live aim angle in degrees (0-90) of the active tank." },
+        "liveFuel": { "type": "number", "description": "Live remaining movement fuel (0-200) of the active tank." },
+        "liveMoveSeq": { "type": "integer", "description": "Monotonically increasing sequence number for live tank pose updates." },
         "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp (FieldValue.serverTimestamp()) when room was created." },
         "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp (FieldValue.serverTimestamp()) when room was updated." }
       },
